@@ -1,0 +1,300 @@
+``` {r install packages}
+# install.packages("gridExtra")
+# install.packages("relsurv")
+# install.packages("flexsurv")
+# install.packages("devtools") #If you don't have "devtools" installed already
+# devtools::install_github("jamesjiadazhan/dietaryindex") # Install the package from GitHub
+# install.packages("haven")
+# install.packages("plyr")
+# install.packages("dplyr")
+# install.packages("arsenal")
+# install.packages("survey")
+# install.packages("ggplot2")
+# install.packages("palmerpenguins")
+# install.packages("tidyverse")
+# install.packages("h2o", type="source", repos=(c("http://h2o-release.s3.amazonaws.com/h2o/latest_stable_R")))#暂定
+# install.packages("lubridate")
+# install.packages("fmsb")
+# install.packages("ukbtools")
+# install.packages("data.table")
+# install.packages("Hmisc")
+# install.packages("dplyr")
+# # install.packagesy("h2o")
+# install.packages("readxl")
+# install.packages("purrr")
+# install.packages("readr")
+# install.packages("msm")
+# install.packages("elect") #https://www.ucl.ac.uk/~ucakadl/ELECT/ELECTManual_version0_2.pdf
+# install.packages("mice")
+# install.packages("MatchThem")
+# install.packages("MatchIt")
+# install.packages("timeROC")
+# install.packages("survival")
+# install.packages("survivalROC")
+# install.packages("pROC")
+# install.packages("survminer")
+# install.packages("table1")
+# install.packages("boot")
+# install.packages("knitr")
+# install.packages("ezcox")
+# install.packages("rms")
+# install.packages("survival")
+# install.packages("survminer")
+# install.packages("forestplot")
+# install.packages("stringr")
+# install.packages("grid")
+# install.packages("checkmate")
+# install.packages("abind")
+# install.packages("colourpicker")
+# install.packages("cmprsk")
+# install.packages("riskRegression")
+# install.packages("pec")
+# install.packages ("car")
+# install.packages("autoReg")
+# install.packages("epiR")
+```
+
+ 
+``` {r load packages}
+library(gridExtra)
+library(relsurv)
+library(flexsurv)
+library(svglite)
+library(dietaryindex)
+library(haven)
+library(plyr)
+library(dplyr)
+library(arsenal)
+library(survey)
+library(ggplot2)
+library(palmerpenguins)
+library(tidyverse)
+library("lubridate")
+library("fmsb")
+library("ukbtools")
+library("data.table")
+library("Hmisc")
+library("dplyr")
+#library("h2o")
+library("readxl")
+library("purrr")
+library("readr")
+library("msm")
+library("elect") #https://www.ucl.ac.uk/~ucakadl/ELECT/ELECTManual_version0_2.pdf
+library("mice")
+library("MatchThem")
+library("MatchIt")
+library("timeROC")
+library("survival")
+library("survivalROC")
+library("pROC")
+library("survminer")
+library("table1")
+library("boot")
+library("knitr")
+library("ezcox")
+library("rms")
+library("survival")
+library("survminer")
+library("forestplot")
+library("stringr")
+library("grid")
+library("checkmate")
+library("abind")
+library("colourpicker")
+library("cmprsk")
+library("riskRegression")
+library("pec")
+library ("car")
+library("autoReg")
+library("epiR")
+```
+
+
+``` {r unweighted and weighted baseline characteristics by CVH level}
+data_table1 <- data_both_clean
+fn_baseline(data_table1)
+rm(data_table1)
+
+data_table1 <- data_both_clean
+fn_baseline_weighted(data_table1)
+rm(data_table1)
+```
+
+
+``` {r Load data_both_clean for Cox regression analysis}
+# Use univariate Cox function
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "death", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/all_cause_mortality_univariate_cox.csv")
+rm(data_cox)
+
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "CVD_mortality", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/CVD_specific_mortality_univariate_cox.csv")
+rm(data_cox)
+
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "cancer_mortality", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/cancer_specific_mortality_univariate_cox.csv")
+rm(data_cox)
+
+# Use multivariate Cox function
+# All-cause mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "death"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "death"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+
+###################################################################
+# CVD-specific mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "CVD_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "CVD_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+
+############################################################
+# Cancer-specific mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "cancer_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "cancer_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+```
+
+
+``` {r life expectancy}
+# install.packages("relsurv")
+# install.packages("flexsurv")
+library(relsurv)
+library(flexsurv)
+
+sur <- data_both_clean
+fn_le(sur)
+rm(sur)
+```
