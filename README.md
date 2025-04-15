@@ -9,8 +9,8 @@ UK_Biobank — Contains scripts and resources specific to the UK Biobank analysi
 US_NHANES — Contains scripts and resources for the analysis of the US NHANES population.
 
 The folder UK_Biobank includes the following RMD files:
-ukb_function — Contains all self-defined functions.
-ukb_analysis — Contains the step-by-step workflows and scripts for conducting the specific analytical processes of the UK Biobank population.
+UKB_function — Contains all self-defined functions.
+UKB_analysis — Contains the step-by-step workflows and scripts for conducting the specific analytical processes of the UK Biobank population.
 
 The folder US_NHANES includes the following RMD files:
 NHANES_function — Contains all self-defined functions.
