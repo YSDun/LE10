@@ -1,0 +1,877 @@
+---
+title: "NHANES_analysis"
+author: "Liwen He"
+date: "2025-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r install packages}
+# ======================
+# INSTALLATION UTILITIES
+# ======================
+# Install devtools first if needed for GitHub packages
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+
+# Function for safe installation
+safe_install <- function(pkg, repo = "CRAN", ...) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    tryCatch({
+      if (repo == "CRAN") {
+        install.packages(pkg, dependencies = TRUE, ...)
+      } else if (repo == "GitHub") {
+        devtools::install_github(...)
+      }
+      message("Successfully installed ", pkg)
+    }, error = function(e) {
+      warning("Failed to install ", pkg, ": ", e$message)
+    })
+  }
+}
+
+# ======================
+# CORE DATA MANIPULATION
+# ======================
+core_pkgs <- c(
+  # Data structures
+  "data.table", 
+  # Tidyverse ecosystem
+  "tidyverse",  # includes dplyr, ggplot2, purrr, etc.
+  "lubridate",
+  "stringr",
+  # Other utilities
+  "plyr"        # NOTE: Load before dplyr
+)
+lapply(core_pkgs, safe_install)
+
+# ======================
+# DATA I/O PACKAGES
+# ======================
+io_pkgs <- c(
+  "haven",     # SAS/SPSS/Stata files
+  "readxl",    # Excel files
+  "readr",     # Flat files
+  "ukbtools"   # UK Biobank data
+)
+lapply(io_pkgs, safe_install)
+
+# ======================
+# STATISTICAL ANALYSIS
+# ======================
+stats_pkgs <- c(
+  "survey",          # Survey analysis
+  "Hmisc",           # Miscellaneous stats
+  "msm",             # Multi-state models
+  "rms",             # Regression modeling
+  "car",             # Companion to applied regression
+  "boot",            # Bootstrap
+  "epiR",            # Epidemiology
+  "elect",           # Expected length of stay
+  "mice"             # Multiple imputation
+)
+lapply(stats_pkgs, safe_install)
+
+# ======================
+# SURVIVAL ANALYSIS
+# ======================
+survival_pkgs <- c(
+  "survival",        # Core survival
+  "survminer",       # Survival viz
+  "flexsurv",        # Flexible survival
+  "relsurv",         # Relative survival
+  "timeROC",         # Time-dependent ROC
+  "survivalROC",     # Survival ROC
+  "cmprsk",          # Competing risks
+  "riskRegression",  # Risk prediction
+  "pec",             # Prediction error
+  "ezcox"            # Easy Cox models
+)
+lapply(survival_pkgs, safe_install)
+
+# ======================
+# VISUALIZATION
+# ======================
+viz_pkgs <- c(
+  "ggplot2",         # Grammar of graphics
+  "forestplot",      # Forest plots
+  "palmerpenguins",  # Example datasets
+  "fmsb",            # Radar charts
+  "gridExtra",       # Plot arrangements
+  "grid",            # Low-level graphics
+  "colourpicker",    # Color selection
+  "svglite"          # SVG output
+)
+lapply(viz_pkgs, safe_install)
+
+# ======================
+# REPORTING & TABLES
+# ======================
+reporting_pkgs <- c(
+  "arsenal",         # Summary tables
+  "table1",          # Medical tables
+  "knitr",           # Dynamic reports
+  "gtsummary",       # Publication tables
+  "autoReg"          # Automated regression
+)
+lapply(reporting_pkgs, safe_install)
+
+# ======================
+# SPECIALIZED PACKAGES
+# ======================
+# GitHub packages
+tryCatch({
+  safe_install("dietaryindex", repo = "GitHub", 
+               "jamesjiadazhan/dietaryindex")
+  safe_install("BioAge", repo = "GitHub", 
+               "dayoonkwon/BioAge")
+}, error = function(e) {
+  message("GitHub packages may require manual installation")
+})
+
+# ======================
+# UTILITY PACKAGES
+# ======================
+utility_pkgs <- c(
+  "checkmate",  # Argument checking
+  "abind",      # Array operations
+  "pROC"        # ROC analysis
+)
+lapply(utility_pkgs, safe_install)
+
+message("Package installation complete!")
+
+```
+
+ 
+```{r load packages}
+### Data I/O and Manipulation
+library(haven)        # Import/export SAS/SPSS/Stata files
+library(data.table)   # Fast data manipulation
+library(readxl)       # Read Excel files
+library(readr)        # Fast reading/writing of delimited files
+library(ukbtools)     # UK Biobank data utilities
+
+### Data Cleaning and Wrangling
+library(dplyr)        # Data manipulation (part of tidyverse)
+library(tidyverse)    # Includes dplyr, tidyr, ggplot2, etc.
+library(purrr)        # Functional programming tools
+library(stringr)      # String manipulation
+library(lubridate)    # Date/time handling
+library(plyr)         # Tools for splitting/combining data (use before dplyr)
+library(mice)         # Multiple imputation
+
+### Statistical Analysis
+library(survey)       # Complex survey analysis
+library(Hmisc)        # Miscellaneous statistical functions
+library(msm)          # Multi-state models
+library(cmprsk)       # Competing risks analysis
+library(boot)         # Bootstrap resampling
+library(epiR)         # Epidemiological analysis
+library(flexsurv)     # Flexible parametric survival models
+library(rms)          # Regression modeling strategies
+library(riskRegression) # Risk prediction models
+library(pec)          # Prediction error curves
+library(elect)        # Expected length of stay calculations
+library(relsurv)      # Relative survival analysis
+library(BioAge)       # Biological age calculations
+library(dietaryindex) # Dietary index calculations
+
+### Survival Analysis
+library(survival)     # Core survival analysis
+library(survminer)    # Survival visualization
+library(timeROC)      # Time-dependent ROC curves
+library(survivalROC)  # Survival ROC analysis
+library(ezcox)        # Easy Cox regression
+
+### Visualization
+library(ggplot2)      # Grammar of graphics (included in tidyverse)
+library(forestplot)   # Forest plots
+library(palmerpenguins) # Example datasets with good viz potential
+library(fmsb)         # Radar charts
+library(colourpicker) # Color selection utilities
+library(grid)         # Low-level graphics
+library(gridExtra)    # Grid layout for plots
+
+### Tables and Reporting
+library(arsenal)      # Create summary tables
+library(table1)       # HTML tables for medical research
+library(knitr)        # Dynamic report generation
+library(gtsummary)    # Publication-ready tables
+library(autoReg)      # Automated regression modeling
+
+### Utility Packages
+library(checkmate)    # Argument checking
+library(abind)        # Combine multi-dimensional arrays
+library(car)          # Companion to Applied Regression
+library(svglite)      # SVG graphics device
+
+```
+
+
+```{r unweighted and weighted baseline characteristics by CVH level}
+data_table1 <- data_both_clean
+fn_baseline(data_table1)
+rm(data_table1)
+
+data_table1 <- data_both_clean
+fn_baseline_weighted(data_table1)
+rm(data_table1)
+```
+
+
+```{r Load data_both_clean for Cox regression analysis}
+# Use univariate Cox function
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "death", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/all_cause_mortality_univariate_cox.csv")
+rm(data_cox)
+
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "CVD_mortality", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/CVD_specific_mortality_univariate_cox.csv")
+rm(data_cox)
+
+data_cox <- data_both_clean
+fn_ezcox("survival_time", "cancer_mortality", "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/cancer_specific_mortality_univariate_cox.csv")
+rm(data_cox)
+
+# Use multivariate Cox function
+# All-cause mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "death"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "death"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+
+###################################################################
+# CVD-specific mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "CVD_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "CVD_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+
+############################################################
+# Cancer-specific mortality using multivariate Cox function
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "cancer_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+fn_coxph(data_cox)
+fn_coxph_weighted(data_cox)
+rm(data_cox)
+
+# Define TDI_sub
+TDI_median <- median(data_both_clean$TDI, na.rm = TRUE)
+data_both_clean$TDI_sub <- ifelse(data_both_clean$TDI > TDI_median, 0, ifelse(data_both_clean$TDI <= TDI_median, 1, NA))
+
+# Define education_sub
+data_both_clean$education_sub <- ifelse(data_both_clean$education <= 2, 0, 1)
+
+# Define income_sub
+data_both_clean$income_sub <- ifelse(data_both_clean$income <= 2, 0, 1)
+
+data_cox <- data_both_clean
+names(data_cox)[names(data_cox) == "age"] <- "age"
+names(data_cox)[names(data_cox) == "survival_time"] <- "time"
+names(data_cox)[names(data_cox) == "cancer_mortality"] <- "status"
+data_cox <- data_cox %>%
+  mutate(
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+    ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+    )
+  )
+analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
+```
+
+
+```{r Calculation of biological ages (KDM-BA, PhenoAge)}
+###################################################################################
+# REF: https://gitcode.com/gh_mirrors/bi/BioAge
+# REF: https://rdrr.io/github/dayoonkwon/BioAge/
+# REF: https://zenodo.org/records/7777437
+###################################################################################
+#install.packages("devtools")
+#devtools::install_github("dayoonkwon/BioAge")
+library(BioAge)
+
+## KDM-BA
+#Train algorithms in NHANES III and project biological ageing measures in NHANES IV
+biomarkers <- c("fev","sbp","totchol","hba1c","albumin","creat","lncrp","alp","bun")
+
+#Train using the NHANES III
+train = kdm_calc(NHANES3,
+                 biomarkers = c("fev","sbp","totchol","hba1c","albumin",
+                 "creat","lncrp","alp","bun"))
+
+#Project into the NHANES IV
+kdm = kdm_calc(NHANES4,
+               biomarkers = c("fev","sbp","totchol","hba1c","albumin",
+               "creat","lncrp","alp","bun"),
+               fit = train$fit,
+               s_ba2 = train$fit$s_ba2)
+
+# Project KDM-BA to kdm_US using NHANES III (trained separately by sex)
+kdm_fem <- kdm_calc(
+  data = cleaned_NHANES %>% filter(sex == 0),
+  biomarkers = c("fev", "sbp", "totchol", "hba1c", "albumin", "creat", "lncrp", "alp", "bun"),
+  fit = kdm$fit$female,
+  s_ba2 = kdm$fit$female$s_b2
+)
+
+kdm_male <- kdm_calc(
+  data = cleaned_NHANES %>% filter(sex == 1),
+  biomarkers = c("fev", "sbp", "totchol", "hba1c", "albumin", "creat", "lncrp", "alp", "bun"),
+  fit = kdm$fit$male,
+  s_ba2 = kdm$fit$male$s_b2
+)
+# Combine male and female datasets
+kdm_US <- rbind(kdm_fem$data, kdm_male$data)
+
+## PhenoAge
+#Train algorithms in NHANES III and project biological ageing measures in NHANES IV
+biomarkers <- c("albumin_gL","lymph","mcv","glucose_mmol","rdw","creat_umol","lncrp","alp","wbc")
+
+#Train using the NHANES III
+train = phenoage_calc(NHANES3,
+                      biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
+                      "rdw","creat_umol","lncrp","alp","wbc"))
+
+#Project into the NHANES IV
+phenoage = phenoage_calc(NHANES4,
+                         biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
+                         "rdw","creat_umol","lncrp","alp","wbc"),
+                         fit = train$fit)
+#Train using the NHANES III
+train = phenoage_calc(NHANES3,
+                      biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
+                      "rdw","creat_umol","lncrp","alp","wbc"))
+#Project into the merged_NHANES
+phenoage = phenoage_calc(cleaned_NHANES,
+                         biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
+                         "rdw","creat_umol","lncrp","alp","wbc"),
+                         fit = train$fit)
+#Extract phenoage dataset
+pheno_US = phenoage$data
+
+```
+
+
+```{r Biological age acceleration}
+data_US <- left_join(data_nhanes, kdm_US[, c("sampleID", "kdm", "kdm_advance")], by = "sampleID") %>% left_join(., pheno_US[, c("sampleID","phenoage","phenoage_advance")], by = "sampleID")
+data_US <- data_US %>%
+  mutate(CVH_level = cut(total_score, breaks = c(-Inf, 60, 80, Inf), labels = c("1", "2", "3")))
+
+data_US <- data_US %>%
+  mutate(kdm_AA_binary = case_when(
+    kdm_advance <= 0 ~ 0,
+    kdm_advance > 0 ~ 1,
+    TRUE ~ NA
+  ))
+
+data_US <- data_US %>%
+  mutate(pheno_AA_binary = case_when(
+    phenoage_advance <= 0 ~ 0,
+    phenoage_advance > 0 ~ 1,
+    TRUE ~ NA
+  ))
+
+# Remove rows with missing values in the kdm_AA_binary column
+cleaned_data <- data_US %>%
+  filter(!is.na(kdm_AA_binary))
+# Calculate the total counts for each CVH_level and sex combination using tally()
+grouped_stats <- cleaned_data %>%
+  group_by(CVH_level, sex, kdm_AA_binary) %>%
+  tally(name = "count") %>%
+  group_by(CVH_level, sex) %>%
+  mutate(total_count = sum(count),
+         `count/total_count` = paste0(count, "/", total_count),
+         percentage = round(count / total_count * 100, 1)) %>%
+  ungroup()
+# Print the results
+print(grouped_stats)
+
+# Remove rows with missing values in the pheno_AA_binary column
+cleaned_data <- data_US %>%
+  filter(!is.na(pheno_AA_binary))
+# Calculate the total counts for each CVH_level and sex combination using tally()
+grouped_stats <- cleaned_data %>%
+  group_by(CVH_level, sex, pheno_AA_binary) %>%
+  tally(name = "count") %>%
+  group_by(CVH_level, sex) %>%
+  mutate(total_count = sum(count),
+         `count/total_count` = paste0(count, "/", total_count),
+         percentage = round(count / total_count * 100, 1)) %>%
+  ungroup()
+# Print the results
+print(grouped_stats)
+
+# Remove rows with missing values in the kdm_AA_binary column
+cleaned_data <- data_US %>%
+  filter(!is.na(kdm_AA_binary))
+# Calculate the total counts for each CVH_level using tally()
+grouped_stats <- cleaned_data %>%
+  group_by(CVH_level, kdm_AA_binary) %>%
+  tally(name = "count") %>%
+  mutate(total_count = sum(count),
+         `count/total_count` = paste0(count, "/", total_count),
+         percentage = round(count / total_count * 100, 1),
+         count_percentage = paste0(count, " (", percentage, ")")) %>%
+  ungroup()
+# Print the results
+print(grouped_stats)
+
+# Remove rows with missing values in the pheno_AA_binary column
+cleaned_data <- data_US %>%
+  filter(!is.na(pheno_AA_binary))
+# Calculate the total counts for each CVH_level using tally()
+grouped_stats <- cleaned_data %>%
+  group_by(CVH_level, pheno_AA_binary) %>%
+  tally(name = "count") %>%
+  mutate(total_count = sum(count),
+         `count/total_count` = paste0(count, "/", total_count),
+         percentage = round(count / total_count * 100, 1),
+         count_percentage = paste0(count, " (", percentage, ")")) %>%
+  ungroup()
+# Print the results
+print(grouped_stats)
+
+```
+
+
+```{r Weighted descriptive statistics table of biological ages and age acceleration}
+# Define survey design
+# Using WTDR2D (2-year interview weights) as weight variable
+# SDMVSTRA as strata variable, and SDMVPSU as cluster variable
+nhanes_design <- svydesign(
+  id = ~SDMVPSU,  # Cluster variable
+  strata = ~SDMVSTRA,  # Stratification variable
+  weights = ~WTDR2D,  # Weight variable
+  nest = TRUE,  # Set to TRUE if strata and clusters are nested
+  data = data_US  # Data frame
+)
+
+
+# Create weighted summary table (grouped by CVH_level)
+table_baseline <- tbl_svysummary(
+  nhanes_design,
+  by = "CVH_level",  # Group by CVH_level
+  include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history", "kdm", "kdm_advance", "kdm_AA_binary", "phenoage", "phenoage_advance", "pheno_AA_binary"),
+  statistic = list(
+    all_continuous() ~ "{mean} ({sd})",
+    all_categorical() ~ "{n_unweighted} ({p}%)"
+  ),
+  type = list(
+    age ~ "continuous",
+    TDI ~ "continuous",
+    income ~ "categorical",
+    education ~ "categorical",
+    sex ~ "categorical",
+    ethnicity ~ "categorical",
+    family_history ~ "categorical",
+    kdm ~ "continuous",
+    kdm_advance ~ "continuous",
+    kdm_AA_binary ~ "categorical",
+    phenoage ~ "continuous",
+    phenoage_advance ~ "continuous",
+    pheno_AA_binary ~ "categorical"
+  ),
+  digits = list(
+    all_continuous() ~ 1,
+    all_categorical() ~ 1
+  ),
+  missing = 'no'
+) %>%
+  add_overall() %>%
+  add_p() %>%
+  add_n(statistic = "{N_nonmiss_unweighted}", col_label = "**N**", footnote = TRUE)
+
+
+# Create weighted summary table (stratified by sex, grouped by CVH_level)
+table_baseline <- tbl_strata(
+  data = nhanes_design,
+  strata = sex,  # Stratify by sex
+  .tbl_fun = ~ tbl_svysummary(
+    .x,
+    by = CVH_level,  # Group by CVH_level
+    include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history", "kdm", "kdm_advance", "kdm_AA_binary", "phenoage", "phenoage_advance", "pheno_AA_binary"),
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",  # Continuous variables: mean and SD
+      all_categorical() ~ "{n_unweighted} ({p}%)"  # Categorical variables: unweighted count and weighted percentage
+    ),
+    type = list(
+      age ~ "continuous",
+      TDI ~ "continuous",
+      income ~ "categorical",
+      education ~ "categorical",
+      sex ~ "categorical",
+      ethnicity ~ "categorical",
+      family_history ~ "categorical",
+      kdm ~ "continuous",
+      kdm_advance ~ "continuous",
+      kdm_AA_binary ~ "categorical",
+      phenoage ~ "continuous",
+      phenoage_advance ~ "continuous",
+      pheno_AA_binary ~ "categorical"
+    ),
+    digits = list(
+      all_continuous() ~ 1,  # 1 decimal for continuous variables
+      all_categorical() ~ 1  # 1 decimal for categorical variables
+    ),
+    missing = 'no'  # Don't show missing values
+  ) %>%
+    add_overall() %>%  # Add overall statistics
+    #add_p() %>%  # Add p-values for between-group comparisons
+    add_n(statistic = "{N_nonmiss_unweighted}", col_label = "**N**", footnote = TRUE)  # Add unweighted sample size
+)
+
+# Print table
+table_baseline
+
+# Convert table to tibble
+table_base_tibble <- as_tibble(table_baseline)
+
+# Convert tibble to data frame
+table_base_df <- as.data.frame(table_base_tibble)
+```
+
+
+```{r Weighted logistic regression model}
+# Perform weighted logistic regression analysis
+model <- svyglm(
+  # Model formula with predictors
+  kdm_AA_binary ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level,  
+  design = nhanes_design,         # Survey design object
+  family = quasibinomial()        # Specify logistic regression
+)
+
+# View model results
+summary(model)
+```
+
+
+```{r life expectancy}
+# install.packages("relsurv")
+# install.packages("flexsurv")
+library(relsurv)
+library(flexsurv)
+
+sur <- data_both_clean
+fn_le(sur)
+rm(sur)
+```
+
+
+```{r Model comparison}
+#install.packages("BiocManager")
+#BiocManager::install("survcomp")
+library(survcomp)
+library(survival)
+library(rms) 
+library(pec)
+
+data_nhanes <- data_both_clean
+data_nhanes <- data_nhanes %>%
+  mutate(
+    age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ "≥60 years"),
+    age_group = factor(age_group, levels = c("<60 years", "≥60 years")),
+    sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+    ethnicity = factor(ethnicity, levels = c(1, 2, 3, 4, 5),
+                       labels = c("Mexican American", "Other Hispanic", "Non-Hispanic White", "Non-Hispanic Black", "Other race—including multi-racial")),
+    education = factor(education, levels = c(1, 2, 3, 4, 5),
+                       labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)", "High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")),
+    income = factor(income, levels = c(1, 2, 3, 4),
+                    labels = c("$0 to $14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")),
+    family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")))
+
+## All-cause mortality
+data_nhanes <- data_nhanes %>% dplyr::rename(time = survival_time)
+data_nhanes <- data_nhanes %>% dplyr::rename(status = death)
+## CVD-specific mortality
+data_nhanes <- data_nhanes %>% dplyr::rename(time = survival_time)
+data_nhanes <- data_nhanes %>% dplyr::rename(status = CVD_mortality)
+## cancer-specific mortality
+data_nhanes <- data_nhanes %>% dplyr::rename(time = survival_time)
+data_nhanes <- data_nhanes %>% dplyr::rename(status = cancer_mortality)
+
+#LE8
+model_LE8 <- coxph(Surv(time,status)~age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score, data=data_nhanes, x=TRUE)
+Cindex_LE8 <- summary(model_LE8)$concordance
+Cindex_LE8
+#LC9
+model_LC9 <- coxph(Surv(time,status)~age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+mental_health_score, data=data_nhanes, x=TRUE)
+Cindex_LC9 <- summary(model_LC9)$concordance
+Cindex_LC9
+#LE9
+model_LE9 <- coxph(Surv(time,status)~age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score, data=data_nhanes, x=TRUE)
+Cindex_LE9 <- summary(model_LE9)$concordance
+Cindex_LE9
+#LE10
+model_LE10 <- coxph(Surv(time,status)~age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score+mental_health_score, data=data_nhanes, x=TRUE)
+Cindex_LE10 <- summary(model_LE10)$concordance
+Cindex_LE10
+
+#####################################################################
+# Calculate C-indexes with survcomp package
+#####################################################################
+Cindex_LE8 <- concordance.index(x=predict(model_LE8),
+                                 surv.time=data_nhanes$time,
+                                 surv.event=data_nhanes$status,
+                                 method="noether")
+Cindex_LE8
+
+#LC9
+Cindex_LC9 <- concordance.index(x=predict(model_LC9),
+                                 surv.time=data_nhanes$time,
+                                 surv.event=data_nhanes$status,
+                                 method="noether")
+Cindex_LC9
+
+#LE9
+Cindex_LE9 <- concordance.index(x=predict(model_LE9),
+                                 surv.time=data_nhanes$time,
+                                 surv.event=data_nhanes$status,
+                                 method="noether")
+Cindex_LE9
+
+#LE10
+Cindex_LE10 <- concordance.index(x=predict(model_LE10),
+                                 surv.time=data_nhanes$time,
+                                 surv.event=data_nhanes$status,
+                                 method="noether")
+Cindex_LE10
+
+cindex.comp1 <- cindex.comp(Cindex_LC9, Cindex_LE8)
+cindex.comp2 <- cindex.comp(Cindex_LE9, Cindex_LE8)
+cindex.comp3 <- cindex.comp(Cindex_LE10, Cindex_LE8)
+
+p.value_decimal1 <- format(cindex.comp1$p.value, scientific = FALSE)
+p.value_decimal2 <- format(cindex.comp2$p.value, scientific = FALSE)
+p.value_decimal3 <- format(cindex.comp3$p.value, scientific = FALSE)
+
+#####################################################################
+# Calculate time-dependent AUC
+#####################################################################
+pred_LE8 <- predict(model_LE8, type = "lp")
+pred_LE9 <- predict(model_LE9, type = "lp")
+pred_LC9 <- predict(model_LC9, type = "lp")
+pred_LE10 <- predict(model_LE10, type = "lp")
+
+time_points <- seq(0, 15, by = 0.1)
+time_roc_LE8 <- timeROC(T = data_nhanes$time, delta = data_nhanes$status, marker = pred_LE8, cause = 1, times = time_points)
+time_roc_LC9 <- timeROC(T = data_nhanes$time, delta = data_nhanes$status, marker = pred_LC9, cause = 1, times = time_points)
+time_roc_LE9 <- timeROC(T = data_nhanes$time, delta = data_nhanes$status, marker = pred_LE9, cause = 1, times = time_points)
+time_roc_LE10 <- timeROC(T = data_nhanes$time, delta = data_nhanes$status, marker = pred_LE10, cause = 1, times = time_points)
+
+# Extract AUC values
+auc1 <- time_roc_LE8$AUC
+auc2 <- time_roc_LC9$AUC
+auc3 <- time_roc_LE9$AUC
+auc4 <- time_roc_LE10$AUC
+
+df_auc <- data.frame(
+  Time = rep(time_points, 4),  
+  AUC = c(auc1, auc2, auc3, auc4),  
+  Model = c(rep("LE8", length(time_points)), rep("LC9", length(time_points)), rep("LE9", length(time_points)), rep("LE10", length(time_points)))
+)
+print(df_auc)
+
+# Fit the logistic model for KDM-BA acceleration
+# LE8
+model1 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
+# LE8+mental health score
+model2 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+mental_health_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
+# LE8+alcohol consumption score
+model3 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
+# LE10
+model4 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score+mental_health_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
+
+# Calculate prediction values
+kdm_US$predvalue1 <- predict(model1)
+kdm_US$predvalue2 <- predict(model2)
+kdm_US$predvalue3 <- predict(model3)
+kdm_US$predvalue4 <- predict(model4)
+
+# Fit ROC
+modelROC1 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue1)
+auc1 <- auc(modelROC1)
+ci1 <- ci(auc1)
+modelROC2 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue2)
+auc2 <- auc(modelROC2)
+ci2 <- ci(auc2)
+modelROC3 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue3)
+auc3 <- auc(modelROC3)
+ci3 <- ci(auc3)
+modelROC4 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue4)
+auc4 <- auc(modelROC4)
+ci4 <- ci(auc4)
+
+# Calculate the difference between two models using the roc.test function in the pROC package
+roc_test_result1 <- roc.test(modelROC1, modelROC2)
+roc_test_result2 <- roc.test(modelROC1, modelROC3)
+roc_test_result3 <- roc.test(modelROC1, modelROC4)
+
+
+# Fit the logistic model for PhenoAge acceleration
+# LE8
+model1 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
+# LE8+mental health score
+model2 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+mental_health_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
+# LE8+alcohol consumption score
+model3 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
+# LE10
+model4 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score+mental_health_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
+
+# Calculate prediction values
+pheno_US$predvalue1 <- predict(model1)
+pheno_US$predvalue2 <- predict(model2)
+pheno_US$predvalue3 <- predict(model3)
+pheno_US$predvalue4 <- predict(model4)
+
+# Fit ROC
+modelROC1 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue1)
+auc1 <- auc(modelROC1)
+ci1 <- ci(auc1)
+modelROC2 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue2)
+auc2 <- auc(modelROC2)
+ci2 <- ci(auc2)
+modelROC3 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue3)
+auc3 <- auc(modelROC3)
+ci3 <- ci(auc3)
+modelROC4 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue4)
+auc4 <- auc(modelROC4)
+ci4 <- ci(auc4)
+
+# Calculate the difference between two models using the roc.test function in the pROC package
+roc_test_result1 <- roc.test(modelROC1, modelROC2)
+roc_test_result2 <- roc.test(modelROC1, modelROC3)
+roc_test_result3 <- roc.test(modelROC1, modelROC4)
+```
+
