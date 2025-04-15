@@ -1,0 +1,275 @@
+```{r load packages}
+# install.packages("pkgbuild")
+# pkgbuild::check_build_tools(debug = TRUE)
+# install.packages("h2o", type="source", repos=(c("http://h2o-release.s3.amazonaws.com/h2o/latest_stable_R")))
+# install.packages("lubridate")
+# install.packages("devtools")
+# install.packages("lubridate")
+# install.packages("ukbtools")
+# install.packages("data.table")
+# install.packages("Hmisc")
+# install.packages("dplyr")
+# install.packages("readxl")
+# install.packages("purrr")
+# install.packages("readr")
+# install.packages("msm")
+# install.packages("elect")
+# install.packages("mice")
+# install.packages("MatchThem")
+# install.packages("MatchIt")
+# install.packages("timeROC")
+# install.packages("survivalROC")
+# install.packages("pROC")
+# install.packages("survminer")
+# install.packages("ggplot2")
+# install.packages("skimr")
+# install.packages("nnet", type="source", repos=(c("http://h2o-release.s3.amazonaws.com/h2o/latest_stable_R")))
+# install.packages("XML", type="source", repos=(c("http://h2o-release.s3.amazonaws.com/h2o/latest_stable_R")))
+# library(skimr)
+# library(devtools)
+# library("lubridate")
+# library("ukbtools")
+# library("data.table")
+# library("Hmisc")
+# library("dplyr")
+# #library("h2o")
+# library("readxl")
+# library("purrr")
+# library("readr")
+# library("msm")
+# library("elect") #https://www.ucl.ac.uk/~ucakadl/ELECT/ELECTManual_version0_2.pdf
+# library("mice")
+# library("MatchThem")
+# library("MatchIt")
+# library("timeROC")
+# library("survival")
+# library("survivalROC")
+# library("pROC")
+# library("survminer")
+
+```
+
+
+```{r Set global}
+# options(scipen = 999)
+```
+
+
+```{r Cox regression analysis}
+preprocess_data <- function(data) {
+  data <- data %>%
+    mutate(
+      age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ "≥60 years"),
+      age_group = factor(age_group, levels = c("<60 years", "≥60 years")),
+      sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+      ethnicity = case_when(
+        ethnicity_cat == "White" ~ "White",
+        ethnicity_cat %in% c("Asian", "Black", "Mixed", "Other ethnicity") ~ "Non-white"),
+      ethnicity = factor(ethnicity, levels = c("Non-white", "White")),
+      education = factor(education_cat, levels = c("No qualifications", "CSEs or O levels/GCSEs or equivalent", "A levels/AS levels or equivalent", "Other professional qualifications", "NVQ or HND or HNC or equivalent", "College or University degree")),
+      income = factor(income_cat, levels = c("<18,000", "18,000-30,999", "31,000-51,999", "52,000-100,000", ">100,000")),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      CVH_level = case_when(
+      total_score < 60 ~ 1, # Reference
+      total_score >= 60 & total_score < 80 ~ 2,
+      total_score >= 80 ~ 3),
+      CVH_level = factor(CVH_level, levels = c(1, 2, 3), labels = c("Low CVH", "Moderate CVH", "High CVH")),
+      ideal_number = case_when(
+        ideal_number < 6 ~ "ideal0-5", # Reference
+        ideal_number >= 6 & ideal_number < 9 ~ "ideal6-8",
+        ideal_number >= 9 ~ "ideal9-10"),
+      ideal_number = factor(ideal_number, levels = c("ideal0-5", "ideal6-8", "ideal9-10"))
+    )
+  return(data)
+}
+
+# Define a function to calculate the number of events per 1000 person-years
+fn_calculate_1000PYs <- function(data) {
+  data <- data %>%
+    rowwise() %>%
+    mutate(
+      result0 = list(prop.test(events, total_PYs, p = 0.5, alternative = "two.sided", conf.level = 0.95)),
+      ci = list(result0[["conf.int"]]),
+      PYs_CI = paste("(", round(ci[[1]] * 1000, 1), " to ", round(ci[[2]] * 1000, 1), ")", sep = ""),
+      PYs = round((events / total_PYs) * 1000, 1),
+      `pyears (95% CI)` = paste0(PYs, " ", PYs_CI)
+    ) %>%
+    dplyr::select(CVH_level, events, total_PYs, PYs, `events/n`, `pyears (95% CI)`)
+  return(data)
+}
+
+# Define a function that extracts incidence rate difference (IRD)
+extract_ird_to_df <- function(ird_list) {
+  df <- data.frame(
+    comparison = character(),
+    estimate = numeric(),
+    conf.int.lower = numeric(),
+    conf.int.upper = numeric(),
+    p.value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (comparison in names(ird_list)) {
+    estimate <- round(ird_list[[comparison]]$estimate, 1)
+    conf.int <- ird_list[[comparison]]$conf.int
+    conf.int.lower = round(conf.int[1], 1)
+    conf.int.upper = round(conf.int[2], 1)
+    est.ci <- paste(estimate, "(", conf.int.lower, "to", conf.int.upper, ")")
+    p.value <- ird_list[[comparison]]$p.value
+    
+    df <- rbind(df, data.frame(
+      comparison = comparison,
+      estimate = estimate,
+      conf.int.lower = conf.int[1],
+      conf.int.upper = conf.int[2],
+      est.ci = est.ci,
+      p.value = p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(df)
+}
+
+# Define the Cox regression analysis function
+cox_analysis <- function(data, time_col, status_col, output_path) {
+  names(data)[names(data) == time_col] <- "time"
+  names(data)[names(data) == status_col] <- "status"
+  
+  km <- survfit(Surv(time, status == 1) ~ CVH_level, data = data)
+  print(km)
+  summary_km <- summary(km)
+  
+  E <- data.frame(
+    CVH_level = levels(data$CVH_level),
+    events = summary_km$table[, "events", drop = FALSE],
+    n = summary_km$n
+  )
+  E$`events/n` <- paste(E$events, "/", E$n)
+  dt <- as.data.table(data)
+  TPY <- dt[, .(total_PYs = sum(time)), by = CVH_level]
+  PY <- merge(E, TPY, by = "CVH_level", all = TRUE)
+  PY <- PY %>% arrange(factor(CVH_level, levels = c("Low CVH", "Moderate CVH", "High CVH")))
+  
+  result <- fn_calculate_1000PYs(PY)
+  
+  res.cox <- coxph(formula = Surv(time, status) ~ CVH_level, data = data)
+  summary(res.cox, extend = FALSE)
+  
+  cox_model_pyears <- pyears(res.cox, scale = 1)
+  summary(cox_model_pyears, rate = TRUE, ci.r = TRUE)
+  
+  ird_list <- list()
+  levels <- unique(data$CVH_level)
+  
+  for (i in 1:(length(levels) - 1)) {
+    for (j in (i + 1):length(levels)) {
+      level_i <- levels[i]
+      level_j <- levels[j]
+      
+      cox_IRD <- ratedifference(
+        cox_model_pyears$event[level_i], 
+        cox_model_pyears$event[level_j], 
+        cox_model_pyears$pyears[level_i], 
+        cox_model_pyears$pyears[level_j], 
+        CRC = TRUE, 
+        conf.level = 0.95
+      )
+      
+      ird_estimate_per_1000 <- cox_IRD$estimate * 1000
+      ird_conf_int_per_1000 <- cox_IRD$conf.int * 1000
+      ird_p_value <- cox_IRD$p.value
+      
+      ird_list[[paste(level_i, "vs", level_j)]] <- list(
+        estimate = ird_estimate_per_1000,
+        conf.int = ird_conf_int_per_1000,
+        p.value = ird_p_value
+      )
+    }
+  }
+  ird_df <- extract_ird_to_df(ird_list)
+  print(ird_df)
+  
+  res.cox <- coxph(Surv(time, status) ~ strata(age_group) + sex + TDI + ethnicity + education + income + family_history + CVH_level, data = data)
+  mul_cox1 <- summary(res.cox)
+  multi1 <- as.data.frame(round(mul_cox1$conf.int[, c(1, 3, 4)], 2))
+  
+  multi2 <- broom::tidy(res.cox, exp = TRUE, conf.int = TRUE)
+  multi2$p.value <- round(multi2$p.value, digits = 3)
+  multi2$p.value <- ifelse(multi2$p.value == 0, "<0.001", multi2$p.value)
+  
+  result <- cbind(multi1, multi2)
+  result <- tibble::rownames_to_column(result, var = "Characteristics")
+  result <- result %>%
+    mutate(`HR(95%CI)` = paste0(`exp(coef)`, " (", `lower .95`, " to ", `upper .95`, ")")) %>%
+    dplyr::select(Characteristics, `exp(coef)`, `lower .95`, `upper .95`, `HR(95%CI)`, p.value)
+}
+```
+
+
+```{r univariate cox analysis}
+library(dplyr)
+library(ezcox)
+library(knitr)
+
+# Define the single-factor Cox regression analysis function
+univariate_cox_analysis <- function(data, time_col, status_col, covariates, output_path) {
+  results <- ezcox(data, time = time_col, status = status_col, covariates = covariates)
+  results$p.value <- round(results$p.value, digits = 3)
+  results$p.value <- ifelse(results$p.value < 0.001, "<0.001", results$p.value)
+  results <- results %>%
+    mutate(`HR (95%CI)` = paste0(HR, " (", lower_95, "-", upper_95, ")")) %>%
+    dplyr::select(Variable, `HR (95%CI)`, p.value)
+  print(knitr::kable(results))
+}
+```
+
+
+```{r define panel data}
+fn_panel_data <- function(df, disease_incidence_ages) {
+  len <- length(df$eid)
+  
+  # baseline data
+  data_f1 <- data.frame(matrix(nrow = len, ncol = 0))
+  data_f1$eid <- df$eid
+  data_f1$state <- 1
+  data_f1$age <- df$age_first_assessment
+  data_f1$bsline <- 1
+  
+  # age at disease incidence
+  data_f2 <- data.frame(matrix(nrow = len, ncol = 0))
+  data_f2$eid <- df$eid
+  data_f2$state <- 2
+  data_f2$age <- do.call(pmin, c(df[disease_incidence_ages], na.rm = TRUE))
+  data_f2$age <- ifelse(is.na(data_f2$age), 0, data_f2$age)
+  data_f2$bsline <- 0
+  data_f2 <- data_f2[data_f2$age > 0, ]
+  
+  # age at death
+  data_f3 <- data.frame(matrix(nrow = len, ncol = 0))
+  data_f3$eid <- df$eid
+  data_f3$state <- 3
+  data_f3$age <- df$age_at_death
+  data_f3$age <- ifelse(is.na(data_f3$age), 0, data_f3$age)
+  data_f3$bsline <- 0
+  data_f3 <- data_f3[data_f3$age > 0, ]
+  
+  # no death
+  data_f <- rbind(data_f1, data_f2, data_f3)
+  data_f4 <- tally(group_by(data_f, eid))
+  data_f4 <- data_f4[data_f4$n == 1, ]
+  data_f4$state <- 1 # censoring
+  data_f4 <- inner_join(data_f4, df[, c("eid", "age_censoring")], by = "eid")
+  data_f4$bsline <- 0
+  names(data_f4)[names(data_f4) == "age_censoring"] <- "age"
+  data_f4 <- data_f4[, c("eid", "state", "age", "bsline")]
+  
+  # combine panel data
+  data_f <- rbind(data_f1, data_f2, data_f3, data_f4)
+  
+  return(data_f)
+}
+
+```
