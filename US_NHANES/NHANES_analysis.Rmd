@@ -1,7 +1,7 @@
 ---
 title: "NHANES_analysis"
 author: "Liwen He"
-date: "2025-04-15"
+date: "2025-10-15"
 output: html_document
 ---
 
@@ -147,8 +147,6 @@ lapply(reporting_pkgs, safe_install)
 tryCatch({
   safe_install("dietaryindex", repo = "GitHub", 
                "jamesjiadazhan/dietaryindex")
-  safe_install("BioAge", repo = "GitHub", 
-               "dayoonkwon/BioAge")
 }, error = function(e) {
   message("GitHub packages may require manual installation")
 })
@@ -198,7 +196,6 @@ library(riskRegression) # Risk prediction models
 library(pec)          # Prediction error curves
 library(elect)        # Expected length of stay calculations
 library(relsurv)      # Relative survival analysis
-library(BioAge)       # Biological age calculations
 library(dietaryindex) # Dietary index calculations
 
 ### Survival Analysis
@@ -410,161 +407,7 @@ analyze_data(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc")
 ```
 
 
-```{r Calculation of biological ages (KDM-BA, PhenoAge)}
-###################################################################################
-# REF: https://gitcode.com/gh_mirrors/bi/BioAge
-# REF: https://rdrr.io/github/dayoonkwon/BioAge/
-# REF: https://zenodo.org/records/7777437
-###################################################################################
-#install.packages("devtools")
-#devtools::install_github("dayoonkwon/BioAge")
-library(BioAge)
-
-## KDM-BA
-#Train algorithms in NHANES III and project biological ageing measures in NHANES IV
-biomarkers <- c("fev","sbp","totchol","hba1c","albumin","creat","lncrp","alp","bun")
-
-#Train using the NHANES III
-train = kdm_calc(NHANES3,
-                 biomarkers = c("fev","sbp","totchol","hba1c","albumin",
-                 "creat","lncrp","alp","bun"))
-
-#Project into the NHANES IV
-kdm = kdm_calc(NHANES4,
-               biomarkers = c("fev","sbp","totchol","hba1c","albumin",
-               "creat","lncrp","alp","bun"),
-               fit = train$fit,
-               s_ba2 = train$fit$s_ba2)
-
-# Project KDM-BA to kdm_US using NHANES III (trained separately by sex)
-kdm_fem <- kdm_calc(
-  data = cleaned_NHANES %>% filter(sex == 0),
-  biomarkers = c("fev", "sbp", "totchol", "hba1c", "albumin", "creat", "lncrp", "alp", "bun"),
-  fit = kdm$fit$female,
-  s_ba2 = kdm$fit$female$s_b2
-)
-
-kdm_male <- kdm_calc(
-  data = cleaned_NHANES %>% filter(sex == 1),
-  biomarkers = c("fev", "sbp", "totchol", "hba1c", "albumin", "creat", "lncrp", "alp", "bun"),
-  fit = kdm$fit$male,
-  s_ba2 = kdm$fit$male$s_b2
-)
-# Combine male and female datasets
-kdm_US <- rbind(kdm_fem$data, kdm_male$data)
-
-## PhenoAge
-#Train algorithms in NHANES III and project biological ageing measures in NHANES IV
-biomarkers <- c("albumin_gL","lymph","mcv","glucose_mmol","rdw","creat_umol","lncrp","alp","wbc")
-
-#Train using the NHANES III
-train = phenoage_calc(NHANES3,
-                      biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
-                      "rdw","creat_umol","lncrp","alp","wbc"))
-
-#Project into the NHANES IV
-phenoage = phenoage_calc(NHANES4,
-                         biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
-                         "rdw","creat_umol","lncrp","alp","wbc"),
-                         fit = train$fit)
-#Train using the NHANES III
-train = phenoage_calc(NHANES3,
-                      biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
-                      "rdw","creat_umol","lncrp","alp","wbc"))
-#Project into the merged_NHANES
-phenoage = phenoage_calc(cleaned_NHANES,
-                         biomarkers = c("albumin_gL","lymph","mcv","glucose_mmol",
-                         "rdw","creat_umol","lncrp","alp","wbc"),
-                         fit = train$fit)
-#Extract phenoage dataset
-pheno_US = phenoage$data
-
-```
-
-
-```{r Biological age acceleration}
-data_US <- left_join(data_nhanes, kdm_US[, c("sampleID", "kdm", "kdm_advance")], by = "sampleID") %>% left_join(., pheno_US[, c("sampleID","phenoage","phenoage_advance")], by = "sampleID")
-data_US <- data_US %>%
-  mutate(CVH_level = cut(total_score, breaks = c(-Inf, 60, 80, Inf), labels = c("1", "2", "3")))
-
-data_US <- data_US %>%
-  mutate(kdm_AA_binary = case_when(
-    kdm_advance <= 0 ~ 0,
-    kdm_advance > 0 ~ 1,
-    TRUE ~ NA
-  ))
-
-data_US <- data_US %>%
-  mutate(pheno_AA_binary = case_when(
-    phenoage_advance <= 0 ~ 0,
-    phenoage_advance > 0 ~ 1,
-    TRUE ~ NA
-  ))
-
-# Remove rows with missing values in the kdm_AA_binary column
-cleaned_data <- data_US %>%
-  filter(!is.na(kdm_AA_binary))
-# Calculate the total counts for each CVH_level and sex combination using tally()
-grouped_stats <- cleaned_data %>%
-  group_by(CVH_level, sex, kdm_AA_binary) %>%
-  tally(name = "count") %>%
-  group_by(CVH_level, sex) %>%
-  mutate(total_count = sum(count),
-         `count/total_count` = paste0(count, "/", total_count),
-         percentage = round(count / total_count * 100, 1)) %>%
-  ungroup()
-# Print the results
-print(grouped_stats)
-
-# Remove rows with missing values in the pheno_AA_binary column
-cleaned_data <- data_US %>%
-  filter(!is.na(pheno_AA_binary))
-# Calculate the total counts for each CVH_level and sex combination using tally()
-grouped_stats <- cleaned_data %>%
-  group_by(CVH_level, sex, pheno_AA_binary) %>%
-  tally(name = "count") %>%
-  group_by(CVH_level, sex) %>%
-  mutate(total_count = sum(count),
-         `count/total_count` = paste0(count, "/", total_count),
-         percentage = round(count / total_count * 100, 1)) %>%
-  ungroup()
-# Print the results
-print(grouped_stats)
-
-# Remove rows with missing values in the kdm_AA_binary column
-cleaned_data <- data_US %>%
-  filter(!is.na(kdm_AA_binary))
-# Calculate the total counts for each CVH_level using tally()
-grouped_stats <- cleaned_data %>%
-  group_by(CVH_level, kdm_AA_binary) %>%
-  tally(name = "count") %>%
-  mutate(total_count = sum(count),
-         `count/total_count` = paste0(count, "/", total_count),
-         percentage = round(count / total_count * 100, 1),
-         count_percentage = paste0(count, " (", percentage, ")")) %>%
-  ungroup()
-# Print the results
-print(grouped_stats)
-
-# Remove rows with missing values in the pheno_AA_binary column
-cleaned_data <- data_US %>%
-  filter(!is.na(pheno_AA_binary))
-# Calculate the total counts for each CVH_level using tally()
-grouped_stats <- cleaned_data %>%
-  group_by(CVH_level, pheno_AA_binary) %>%
-  tally(name = "count") %>%
-  mutate(total_count = sum(count),
-         `count/total_count` = paste0(count, "/", total_count),
-         percentage = round(count / total_count * 100, 1),
-         count_percentage = paste0(count, " (", percentage, ")")) %>%
-  ungroup()
-# Print the results
-print(grouped_stats)
-
-```
-
-
-```{r Weighted descriptive statistics table of biological ages and age acceleration}
+```{r Weighted descriptive statistics table}
 # Define survey design
 # Using WTDR2D (2-year interview weights) as weight variable
 # SDMVSTRA as strata variable, and SDMVPSU as cluster variable
@@ -581,7 +424,7 @@ nhanes_design <- svydesign(
 table_baseline <- tbl_svysummary(
   nhanes_design,
   by = "CVH_level",  # Group by CVH_level
-  include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history", "kdm", "kdm_advance", "kdm_AA_binary", "phenoage", "phenoage_advance", "pheno_AA_binary"),
+  include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history"),
   statistic = list(
     all_continuous() ~ "{mean} ({sd})",
     all_categorical() ~ "{n_unweighted} ({p}%)"
@@ -593,13 +436,7 @@ table_baseline <- tbl_svysummary(
     education ~ "categorical",
     sex ~ "categorical",
     ethnicity ~ "categorical",
-    family_history ~ "categorical",
-    kdm ~ "continuous",
-    kdm_advance ~ "continuous",
-    kdm_AA_binary ~ "categorical",
-    phenoage ~ "continuous",
-    phenoage_advance ~ "continuous",
-    pheno_AA_binary ~ "categorical"
+    family_history ~ "categorical"
   ),
   digits = list(
     all_continuous() ~ 1,
@@ -619,7 +456,7 @@ table_baseline <- tbl_strata(
   .tbl_fun = ~ tbl_svysummary(
     .x,
     by = CVH_level,  # Group by CVH_level
-    include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history", "kdm", "kdm_advance", "kdm_AA_binary", "phenoage", "phenoage_advance", "pheno_AA_binary"),
+    include = c("age", "sex", "ethnicity", "TDI", "education", "income", "family_history"),
     statistic = list(
       all_continuous() ~ "{mean} ({sd})",  # Continuous variables: mean and SD
       all_categorical() ~ "{n_unweighted} ({p}%)"  # Categorical variables: unweighted count and weighted percentage
@@ -631,13 +468,7 @@ table_baseline <- tbl_strata(
       education ~ "categorical",
       sex ~ "categorical",
       ethnicity ~ "categorical",
-      family_history ~ "categorical",
-      kdm ~ "continuous",
-      kdm_advance ~ "continuous",
-      kdm_AA_binary ~ "categorical",
-      phenoage ~ "continuous",
-      phenoage_advance ~ "continuous",
-      pheno_AA_binary ~ "categorical"
+      family_history ~ "categorical"
     ),
     digits = list(
       all_continuous() ~ 1,  # 1 decimal for continuous variables
@@ -658,20 +489,6 @@ table_base_tibble <- as_tibble(table_baseline)
 
 # Convert tibble to data frame
 table_base_df <- as.data.frame(table_base_tibble)
-```
-
-
-```{r Weighted logistic regression model}
-# Perform weighted logistic regression analysis
-model <- svyglm(
-  # Model formula with predictors
-  kdm_AA_binary ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level,  
-  design = nhanes_design,         # Survey design object
-  family = quasibinomial()        # Specify logistic regression
-)
-
-# View model results
-summary(model)
 ```
 
 
@@ -802,76 +619,6 @@ df_auc <- data.frame(
   Model = c(rep("LE8", length(time_points)), rep("LC9", length(time_points)), rep("LE9", length(time_points)), rep("LE10", length(time_points)))
 )
 print(df_auc)
-
-# Fit the logistic model for KDM-BA acceleration
-# LE8
-model1 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
-# LE8+mental health score
-model2 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+mental_health_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
-# LE8+alcohol consumption score
-model3 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
-# LE10
-model4 <- glm(kdm_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score+mental_health_score, data = kdm_US, family = binomial, x = TRUE,y = TRUE)
-
-# Calculate prediction values
-kdm_US$predvalue1 <- predict(model1)
-kdm_US$predvalue2 <- predict(model2)
-kdm_US$predvalue3 <- predict(model3)
-kdm_US$predvalue4 <- predict(model4)
-
-# Fit ROC
-modelROC1 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue1)
-auc1 <- auc(modelROC1)
-ci1 <- ci(auc1)
-modelROC2 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue2)
-auc2 <- auc(modelROC2)
-ci2 <- ci(auc2)
-modelROC3 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue3)
-auc3 <- auc(modelROC3)
-ci3 <- ci(auc3)
-modelROC4 <- roc(kdm_US$kdm_AA_binary, kdm_US$predvalue4)
-auc4 <- auc(modelROC4)
-ci4 <- ci(auc4)
-
-# Calculate the difference between two models using the roc.test function in the pROC package
-roc_test_result1 <- roc.test(modelROC1, modelROC2)
-roc_test_result2 <- roc.test(modelROC1, modelROC3)
-roc_test_result3 <- roc.test(modelROC1, modelROC4)
-
-
-# Fit the logistic model for PhenoAge acceleration
-# LE8
-model1 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
-# LE8+mental health score
-model2 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+mental_health_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
-# LE8+alcohol consumption score
-model3 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
-# LE10
-model4 <- glm(pheno_AA_binary ~ age+sex+TDI+ethnicity+education+income+family_history+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score+alcohol_score+mental_health_score, data = pheno_US, family = binomial, x = TRUE,y = TRUE)
-
-# Calculate prediction values
-pheno_US$predvalue1 <- predict(model1)
-pheno_US$predvalue2 <- predict(model2)
-pheno_US$predvalue3 <- predict(model3)
-pheno_US$predvalue4 <- predict(model4)
-
-# Fit ROC
-modelROC1 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue1)
-auc1 <- auc(modelROC1)
-ci1 <- ci(auc1)
-modelROC2 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue2)
-auc2 <- auc(modelROC2)
-ci2 <- ci(auc2)
-modelROC3 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue3)
-auc3 <- auc(modelROC3)
-ci3 <- ci(auc3)
-modelROC4 <- roc(pheno_US$pheno_AA_binary, pheno_US$predvalue4)
-auc4 <- auc(modelROC4)
-ci4 <- ci(auc4)
-
-# Calculate the difference between two models using the roc.test function in the pROC package
-roc_test_result1 <- roc.test(modelROC1, modelROC2)
-roc_test_result2 <- roc.test(modelROC1, modelROC3)
-roc_test_result3 <- roc.test(modelROC1, modelROC4)
 ```
+
 
