@@ -1,0 +1,1406 @@
+``` {r download packages}
+# install.packages("epitools")
+# install.packages("devtools") #If you don't have "devtools" installed already
+# devtools::install_github("jamesjiadazhan/dietaryindex") # Install the package from GitHub
+# install.packages("haven")
+# install.packages("plyr")
+# install.packages("dplyr")
+# install.packages("arsenal")
+# install.packages("survey")
+# install.packages("ggplot2")
+# install.packages("palmerpenguins")
+# install.packages("tidyverse")
+# install.packages("lubridate")
+# install.packages("fmsb")
+# install.packages("ukbtools")
+# install.packages("data.table")
+# install.packages("Hmisc")
+# install.packages("dplyr")
+# install.packages("readxl")
+# install.packages("purrr")
+# install.packages("readr")
+# install.packages("msm")
+# install.packages("elect") #https://www.ucl.ac.uk/~ucakadl/ELECT/ELECTManual_version0_2.pdf
+# install.packages("mice")
+# install.packages("MatchThem")
+# install.packages("MatchIt")
+# install.packages("timeROC")
+# install.packages("survival")
+# install.packages("survivalROC")
+# install.packages("pROC")
+# install.packages("survminer")
+# install.packages("table1")
+# install.packages("boot")
+# install.packages("knitr")
+# install.packages("ezcox")
+# install.packages("rms")
+# install.packages("survival")
+# install.packages("survminer")
+# install.packages("forestplot")
+# install.packages("stringr")
+# install.packages("grid")
+# install.packages("checkmate")
+# install.packages("abind")
+# install.packages("colourpicker")
+# install.packages("cmprsk")
+# install.packages("riskRegression")
+# install.packages("pec")
+# install.packages ("car")
+# install.packages("autoReg")
+# install.packages("epiR")
+```
+
+
+``` {r load packages}
+# library(epitools)
+# library(svglite)
+# library(dietaryindex)
+# library(haven)
+# library(plyr)
+# library(dplyr)
+# library(arsenal)
+# library(survey)
+# library(ggplot2)
+# library(palmerpenguins)
+# library(tidyverse)
+# library("lubridate")
+# library("fmsb")
+# library("ukbtools")
+# library("data.table")
+# library("Hmisc")
+# library("dplyr")
+# library("readxl")
+# library("purrr")
+# library("readr")
+# library("msm")
+# library("elect") #https://www.ucl.ac.uk/~ucakadl/ELECT/ELECTManual_version0_2.pdf
+# library("mice")
+# library("MatchThem")
+# library("MatchIt")
+# library("timeROC")
+# library("survival")
+# library("survivalROC")
+# library("pROC")
+# library("survminer")
+# library("table1")
+# library("boot")
+# library("knitr")
+# library("ezcox")
+# library("rms")
+# library("survival")
+# library("survminer")
+# library("forestplot")
+# library("stringr")
+# library("grid")
+# library("checkmate")
+# library("abind")
+# library("colourpicker")
+# library("cmprsk")
+# library("riskRegression")
+# library("pec")
+# library ("car")
+# library("autoReg")
+# library("epiR")
+```
+
+
+``` {r functions of baseline characteristics}
+# Descriptive statistics for continuous and categorical variables are rendered separately
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=5), c("",
+        "Mean (SD)"=sprintf("%.2f (%.2f)", as.numeric(MEAN), as.numeric(SD))))
+}
+
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.2f %%)", FREQ, PCT))))
+}
+
+# pvalue
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+```
+
+
+``` {r unweighted baseline characteristics by CVH level}
+fn_baseline <- function(data_table1){
+  data_table1 <- data_table1 %>%
+  mutate(
+    sex = factor(
+      sex, 
+      levels = c(1,0), 
+      labels = c("Male", "Female")
+      ),
+    education = case_when(
+      education <=2 ~ "Less than highschool",
+      education == 3 ~ "High school or equivalent",
+      education >= 4 ~ "College or above"
+    ),
+    # education = factor(
+    #   education, 
+    #   levels = c(1,2,3,4,5),
+    #   labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)" , "	High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")
+    #   ),
+    income = factor(
+      income, 
+      levels = c(1,2,3,4),
+      labels = c("$ 0 to $ 14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")
+      ),
+    ethnicity = case_when(
+      ethnicity == 1 ~ "Mexican American",
+      ethnicity == 2 ~ "Other Hispanic",
+      ethnicity == 3 ~ "Non-Hispanic White",
+      ethnicity == 4 ~ "Non-Hispanic Black",
+      ethnicity == 5 ~ "Other Race - Including Multi-Racial"
+    ),
+    family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+      ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+      )
+    )
+
+# To add labels to the variables
+label(data_table1$age) <- "Age, mean (SD), y"
+label(data_table1$sex) <- "Sex"
+label(data_table1$TDI) <- "Ratio of Family Income to Poverty"
+label(data_table1$ethnicity) <- "Race and Ethnicity, n (%)"
+label(data_table1$education) <- "Education Levels, n (%)"
+label(data_table1$income) <- "Annual Household Income, n (%), £"
+label(data_table1$family_history) <- "Family History, n (%)"
+label(data_table1$total_score) <- "Total Score"
+label(data_table1$physical_activity_score) <- "Physical Activity Score"
+label(data_table1$mental_health_score) <- "Mental Health Score"
+label(data_table1$alcohol_score) <- "Alcohol Score"
+label(data_table1$smoke_score) <- "Smoke Score"
+label(data_table1$HDI_score) <- "Healthy Diet Score"
+label(data_table1$sleep_score) <- "Sleep Score"
+label(data_table1$BMI_score) <- "Body Mass Index Score"
+label(data_table1$BL_score) <- "Blood Lipid Score"
+label(data_table1$BG_score) <- "Blood Glucose Score"
+label(data_table1$BP_score) <- "Blood Pressure Score"
+
+caption  <- "Table 1. Baseline Characteristics by Cardiovascular Health (CVH) Level"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Cardiovascular health (CVH) is categorized into three levels based on LE10 scores (low: <60; moderate: ≥60 and <80; and high: ≥80). Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+table_base <- table1(~age+sex+ethnicity
+                     +TDI+education+income+family_history+total_score
+                     +alcohol_score+mental_health_score
+                     +HDI_score+physical_activity_score+smoke_score
+                     +sleep_score+BMI_score+BL_score
+                     +BG_score+BP_score|CVH_level,
+                     data=data_table1,
+                     overall=c(left="Total"),
+                     caption=caption,
+                     footnote=footnote,
+                     render.continuous=my.render.cont,
+                     render.categorical=my.render.cat) 
+
+table_base
+
+```
+
+
+``` {r weighted baseline characteristics by CVH level}
+fn_baseline_weighted <- function(data_table1){
+  data_table1 <- data_table1 %>%
+  mutate(
+    sex = factor(
+      sex, 
+      levels = c(1,0), 
+      labels = c("Male", "Female")
+      ),
+    education = case_when(
+      education <=2 ~ "Less than highschool",
+      education == 3 ~ "High school or equivalent",
+      education >= 4 ~ "College or above"
+    ),
+    # education = factor(
+    #   education, 
+    #   levels = c(1,2,3,4,5),
+    #   labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)" , "	High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")
+    #   ),
+    income = factor(
+      income, 
+      levels = c(1,2,3,4),
+      labels = c("$ 0 to $ 14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")
+      ),
+    ethnicity = case_when(
+      ethnicity == 1 ~ "Mexican American",
+      ethnicity == 2 ~ "Other Hispanic",
+      ethnicity == 3 ~ "Non-Hispanic White",
+      ethnicity == 4 ~ "Non-Hispanic Black",
+      ethnicity == 5 ~ "Other Race - Including Multi-Racial"
+    ),
+    family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH"
+      ),
+    CVH_level = factor(
+      CVH_level, 
+      levels = c("Low CVH", "Moderate CVH", "High CVH")
+      )
+    )
+
+# To add labels to the variables
+label(data_table1$age) <- "Age, mean (SD), y"
+label(data_table1$sex) <- "Sex"
+label(data_table1$TDI) <- "Ratio of Family Income to Poverty"
+label(data_table1$ethnicity) <- "Race and Ethnicity, n (%)"
+label(data_table1$education) <- "Education Levels, n (%)"
+label(data_table1$income) <- "Annual Household Income, n (%), £"
+label(data_table1$family_history) <- "Family History, n (%)"
+label(data_table1$total_score) <- "Total Score"
+label(data_table1$physical_activity_score) <- "Physical Activity Score"
+label(data_table1$mental_health_score) <- "Mental Health Score"
+label(data_table1$alcohol_score) <- "Alcohol Score"
+label(data_table1$smoke_score) <- "Smoke Score"
+label(data_table1$HDI_score) <- "Healthy Diet Score"
+label(data_table1$sleep_score) <- "Sleep Score"
+label(data_table1$BMI_score) <- "Body Mass Index Score"
+label(data_table1$BL_score) <- "Blood Lipid Score"
+label(data_table1$BG_score) <- "Blood Glucose Score"
+label(data_table1$BP_score) <- "Blood Pressure Score"
+
+caption  <- "Table 1. Baseline Characteristics by Cardiovascular Health (CVH) Level"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Cardiovascular health (CVH) is categorized into three levels based on LE10 scores (low: <60; moderate: ≥60 and <80; and high: ≥80). Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+
+library(gtsummary)
+data_table1 <- svydesign(data = data_table1, ids = ~SDMVPSU, strata = ~SDMVSTRA, nest = TRUE, weights = ~WTDR2D, survey.lonely.psu = "adjust")
+
+table_base <- tbl_svysummary(
+  data_table1,
+  by = "CVH_level",
+  include = c("age", "sex", "ethnicity", "TDI", "education", "income","family_history" ,"total_score", "alcohol_score", "mental_health_score", "HDI_score", "physical_activity_score", "smoke_score", "sleep_score", "BMI_score", "BL_score", "BG_score", "BP_score"),
+  statistic = list(
+    all_continuous() ~ "{mean} ({sd})",
+    all_categorical() ~ "{n_unweighted} ({p}%)"
+  ),
+  type = list(
+    age ~ "continuous",
+    TDI ~ "continuous",
+    income ~ "categorical",
+    education ~ "categorical",
+    sex ~ "categorical",
+    ethnicity ~ "categorical",
+    family_history ~ "categorical",
+    total_score ~ "continuous",
+    alcohol_score ~ "continuous",
+    mental_health_score ~ "continuous",
+    HDI_score ~ "continuous",
+    physical_activity_score ~ "continuous",
+    smoke_score ~ "continuous",
+    sleep_score ~ "continuous",
+    BMI_score ~ "continuous",
+    BL_score ~ "continuous",
+    BG_score ~ "continuous",
+    BP_score ~ "continuous"
+  ),
+  digits = list(
+    all_continuous() ~ 2,
+    all_categorical() ~ 2
+  ),
+  missing = 'no'
+) %>%
+  add_overall() %>%
+  add_p() %>%
+  add_n(statistic = "{N_nonmiss_unweighted}", col_label = "**N**", footnote = TRUE)
+
+table_base
+
+```
+
+
+``` {r univariate cox regression}
+# Define a function for univariate Cox regression
+fn_ezcox <- function(time, death, output_path) {
+  # Copy data and rename columns
+  # data_cox <- data_both_clean
+  names(data_cox)[names(data_cox) == "age"] <- "age"
+  names(data_cox)[names(data_cox) == time] <- "time"
+  names(data_cox)[names(data_cox) == death] <- "status"
+  
+  # Perform univariate Cox regression
+  results <- ezcox(data_cox, time = "time", status = "status",
+                   covariates = c(
+                     "age", "sex", "ethnicity", "education",
+                     "income", "TDI", "family_history",
+                     "physical_activity_score",
+                     "mental_health_score", "alcohol_score", "smoke_score",
+                     "HDI_score", "sleep_score",
+                     "BMI_score", "BL_score", "BG_score",
+                     "BP_score", "total_score"))
+  
+  # Process p-values
+  results$p.value <- round(results$p.value, digits = 3)
+  results$p.value <- ifelse(results$p.value < 0.001, "<0.001", results$p.value)
+  
+  # Create HR (95% CI) column and select required columns
+  results <- results %>%
+    mutate(`HR (95% CI)` = paste0(HR, " (", lower_95, "-", upper_95, ")")) %>%
+    select(Variable, `HR (95% CI)`, p.value)
+  
+  # Print the results table
+  print(knitr::kable(results))
+}
+```
+
+
+``` {r multivariate cox regression——unweighted (function)}
+fn_coxph <- function(data_cox) {
+  # 数据预处理
+  data_cox <- data_cox %>%
+    mutate(
+      age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ "≥60 years"
+      ),
+      age_group = factor(age_group, levels = c("<60 years", "≥60 years")),
+      sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+      ethnicity = factor(ethnicity, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Mexican American", "Other Hispanic", "Non-Hispanic White", "Non-Hispanic Black", "Other Race - Including Multi-Racial")),
+      education = factor(education, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)", "High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")),
+      income = factor(income, levels = c(1, 2, 3, 4),
+                      labels = c("$ 0 to $ 14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      physical_activity_score = case_when(
+        physical_activity_score < 60 ~ "Low", # Reference
+        physical_activity_score >= 60 & physical_activity_score < 100 ~ "Moderate",
+        physical_activity_score >= 100 ~ "High"
+      ),
+      physical_activity_score = factor(physical_activity_score, levels = c("Low", "Moderate", "High")),
+      alcohol_score = case_when(
+        alcohol_score < 40 ~ "Low", # Reference
+        alcohol_score >= 40 & alcohol_score < 100 ~ "Moderate",
+        alcohol_score >= 100 ~ "High"
+      ),
+      alcohol_score = factor(alcohol_score, levels = c("Low", "Moderate", "High")),
+      smoke_score = case_when(
+        smoke_score < 50 ~ "Low", # Reference
+        smoke_score >= 50 & smoke_score < 100 ~ "Moderate",
+        smoke_score >= 100 ~ "High"
+      ),
+      smoke_score = factor(smoke_score, levels = c("Low", "Moderate", "High")),
+      HDI_score = case_when(
+        HDI_score < 50 ~ "Low", # Reference
+        HDI_score >= 50 & HDI_score < 80 ~ "Moderate",
+        HDI_score >= 80 ~ "High"
+      ),
+      HDI_score = factor(HDI_score, levels = c("Low", "Moderate", "High")),
+      sleep_score = case_when(
+        sleep_score < 70 ~ "Low", # Reference
+        sleep_score >= 70 & sleep_score < 100 ~ "Moderate",
+        sleep_score >= 100 ~ "High"
+      ),
+      sleep_score = factor(sleep_score, levels = c("Low", "Moderate", "High")),
+      BMI_score = case_when(
+        BMI_score < 70 ~ "Low", # Reference
+        BMI_score >= 70 & BMI_score < 100 ~ "Moderate",
+        BMI_score >= 100 ~ "High"
+      ),
+      BMI_score = factor(BMI_score, levels = c("Low", "Moderate", "High")),
+      BL_score = case_when(
+        BL_score < 60 ~ "Low", # Reference
+        BL_score >= 60 & BL_score < 100 ~ "Moderate",
+        BL_score >= 100 ~ "High"
+      ),
+      BL_score = factor(BL_score, levels = c("Low", "Moderate", "High")),
+      BG_score = case_when(
+        BG_score < 60 ~ "Low", # Reference
+        BG_score >= 60 & BG_score < 100 ~ "Moderate",
+        BG_score >= 100 ~ "High"
+      ),
+      BG_score = factor(BG_score, levels = c("Low", "Moderate", "High")),
+      BP_score = case_when(
+        BP_score < 50 ~ "Low", # Reference
+        BP_score >= 50 & BP_score < 75 ~ "Moderate",
+        BP_score >= 75 ~ "High"
+      ),
+      BP_score = factor(BP_score, levels = c("Low", "Moderate", "High")),
+      mental_health_score = case_when(
+        mental_health_score < 50 ~ "Low", # Reference
+        mental_health_score >= 50 & mental_health_score < 100 ~ "Moderate",
+        mental_health_score >= 100 ~ "High"
+      ),
+      mental_health_score = factor(mental_health_score, levels = c("Low", "Moderate", "High"))
+    )
+
+  analyze_survival(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","All")
+  
+  
+  # 拟合 Cox 比例风险模型
+  fit_cox_models <- function(data, formula) {
+    coxph(formula, data = data)
+  }
+
+  res.cox1 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox2 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + mental_health_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score)
+  res.cox3 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + alcohol_score)
+  res.cox4 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + mental_health_score)
+
+  # 绘制基础森林图
+  plot_forest <- function(res.cox, data, file_name) {
+    p <- ggforest(res.cox, data = data, main = "Hazard ratio (95% CI)",
+                  cpositions = c(0.05, 0.15, 0.40), # 前三列的位置
+                  fontsize = 0.6, # 字体大小
+                  refLabel = "reference", # 显示变量
+                  noDigits = 3) # 小数点后保留位数
+    print(p)
+    ggsave(file_name, plot = p, width = 900 / 72, height = 1080 / 72, units = "in")
+  }
+
+  plot_forest(res.cox1, data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权CVH.svg")
+  plot_forest(res.cox2, data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权10个评分.svg")
+  plot_forest(res.cox3, data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权alcohol.svg")
+  plot_forest(res.cox4, data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权mental.svg")
+
+  # 针对男性和女性分别拟合模型并绘制森林图
+  fit_and_plot <- function(data, prefix) {
+    res.cox5 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + CVH_level)
+    res.cox6 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + physical_activity_score + mental_health_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score)
+    res.cox7 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + alcohol_score)
+    res.cox8 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + mental_health_score)
+
+    plot_forest(res.cox5, data, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权CVH_", prefix, ".svg"))
+    plot_forest(res.cox6, data, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权10个评分_", prefix, ".svg"))
+    plot_forest(res.cox7, data, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权alcohol_", prefix, ".svg"))
+    plot_forest(res.cox8, data, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/未加权mental_", prefix, ".svg"))
+  }
+
+  fit_and_plot(data_cox %>% filter(sex == "Male"), "男")
+  analyze_survival(data_cox %>% filter(sex == "Male"), "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","男")
+  fit_and_plot(data_cox %>% filter(sex == "Female"), "女")
+  analyze_survival(data_cox %>% filter(sex == "Female"), "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","女")
+}
+
+rm(df_km_curve,E,km,km_data,km_plot,p,p1,p2,p3,PY,res.cox1,res.cox2,res.cox3,result,summary_km,TPY,custom_colors,calculate_1000PYs)
+```
+
+
+``` {r multivariate cox regression——weighted (function)}
+library(gridExtra)
+
+# Define a function for weighted Cox proportional hazards regression
+fn_coxph_weighted <- function(data_cox) {
+  # Data preprocessing
+  data_cox <- data_cox %>%
+    mutate(
+      age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ "≥60 years"
+      ),
+      age_group = factor(age_group, levels = c("<60 years", "≥60 years")),
+      sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+      ethnicity = factor(ethnicity, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Mexican American", "Other Hispanic", "Non-Hispanic White", "Non-Hispanic Black", "Other Race - Including Multi-Racial")),
+      education = factor(education, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)", "High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")),
+      income = factor(income, levels = c(1, 2, 3, 4),
+                      labels = c("$ 0 to $ 14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      physical_activity_score = case_when(
+        physical_activity_score < 60 ~ "Low", # Reference
+        physical_activity_score >= 60 & physical_activity_score < 100 ~ "Moderate",
+        physical_activity_score >= 100 ~ "High"
+      ),
+      physical_activity_score = factor(physical_activity_score, levels = c("Low", "Moderate", "High")),
+      alcohol_score = case_when(
+        alcohol_score < 40 ~ "Low", # Reference
+        alcohol_score >= 40 & alcohol_score < 100 ~ "Moderate",
+        alcohol_score >= 100 ~ "High"
+      ),
+      alcohol_score = factor(alcohol_score, levels = c("Low", "Moderate", "High")),
+      smoke_score = case_when(
+        smoke_score < 50 ~ "Low", # Reference
+        smoke_score >= 50 & smoke_score < 100 ~ "Moderate",
+        smoke_score >= 100 ~ "High"
+      ),
+      smoke_score = factor(smoke_score, levels = c("Low", "Moderate", "High")),
+      HDI_score = case_when(
+        HDI_score < 50 ~ "Low", # Reference
+        HDI_score >= 50 & HDI_score < 80 ~ "Moderate",
+        HDI_score >= 80 ~ "High"
+      ),
+      HDI_score = factor(HDI_score, levels = c("Low", "Moderate", "High")),
+      sleep_score = case_when(
+        sleep_score < 70 ~ "Low", # Reference
+        sleep_score >= 70 & sleep_score < 100 ~ "Moderate",
+        sleep_score >= 100 ~ "High"
+      ),
+      sleep_score = factor(sleep_score, levels = c("Low", "Moderate", "High")),
+      BMI_score = case_when(
+        BMI_score < 70 ~ "Low", # Reference
+        BMI_score >= 70 & BMI_score < 100 ~ "Moderate",
+        BMI_score >= 100 ~ "High"
+      ),
+      BMI_score = factor(BMI_score, levels = c("Low", "Moderate", "High")),
+      BL_score = case_when(
+        BL_score < 60 ~ "Low", # Reference
+        BL_score >= 60 & BL_score < 100 ~ "Moderate",
+        BL_score >= 100 ~ "High"
+      ),
+      BL_score = factor(BL_score, levels = c("Low", "Moderate", "High")),
+      BG_score = case_when(
+        BG_score < 60 ~ "Low", # Reference
+        BG_score >= 60 & BG_score < 100 ~ "Moderate",
+        BG_score >= 100 ~ "High"
+      ),
+      BG_score = factor(BG_score, levels = c("Low", "Moderate", "High")),
+      BP_score = case_when(
+        BP_score < 50 ~ "Low", # Reference
+        BP_score >= 50 & BP_score < 75 ~ "Moderate",
+        BP_score >= 75 ~ "High"
+      ),
+      BP_score = factor(BP_score, levels = c("Low", "Moderate", "High")),
+      mental_health_score = case_when(
+        mental_health_score < 50 ~ "Low", # Reference
+        mental_health_score >= 50 & mental_health_score < 100 ~ "Moderate",
+        mental_health_score >= 100 ~ "High"
+      ),
+      mental_health_score = factor(mental_health_score, levels = c("Low", "Moderate", "High"))
+    )
+
+  # Data weighting
+  data_cox_male <- data_cox %>% filter(sex == "Male")
+  data_cox_female <- data_cox %>% filter(sex == "Female")
+  data_cox <- svydesign(data = data_cox, ids = ~SDMVPSU, strata = ~SDMVSTRA, nest = TRUE, weights = ~WTDR2D, survey.lonely.psu = "adjust")
+  data_cox_male <- svydesign(data = data_cox_male, ids = ~SDMVPSU, strata = ~SDMVSTRA, nest = TRUE, weights = ~WTDR2D, survey.lonely.psu = "adjust")
+  data_cox_female <- svydesign(data = data_cox_female, ids = ~SDMVPSU, strata = ~SDMVSTRA, nest = TRUE, weights = ~WTDR2D, survey.lonely.psu = "adjust")
+  
+  perform_survival_analysis(data_cox, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc", "All")
+  
+  # Fit Cox proportional hazards models
+  fit_cox_models <- function(data, formula) {
+    svycoxph(formula, design = data)
+  }
+
+  res.cox1 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox2 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + alcohol_score)
+  res.cox3 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + mental_health_score)
+  res.cox4 <- fit_cox_models(data_cox, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + mental_health_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score)
+
+  # Extract model results and create a data frame
+  extract_cox_results <- function(res.cox) {
+    cox_summary <- summary(res.cox)
+    coefficients <- cox_summary$coefficients
+    conf.int <- cox_summary$conf.int
+    data.frame(
+      term = rownames(coefficients),
+      estimate = coefficients[, "coef"],
+      std.error = coefficients[, "se(coef)"],
+      p.value = coefficients[, "Pr(>|z|)"],
+      HR = exp(coefficients[, "coef"]),
+      lower = conf.int[, "lower .95"],
+      upper = conf.int[, "upper .95"]
+    ) %>%
+      mutate(
+        label = sprintf("HR = %.2f\n95%% CI = %.2f - %.2f\nP = %.3f", HR, lower, upper, p.value)
+      )
+  }
+
+  cox_df1 <- extract_cox_results(res.cox1)
+  cox_df2 <- extract_cox_results(res.cox2)
+  cox_df3 <- extract_cox_results(res.cox3)
+  cox_df4 <- extract_cox_results(res.cox4)
+
+  # Plot forest plots
+  plot_forest <- function(cox_df, file_name) {
+    p <- ggplot(cox_df, aes(x = term, y = estimate)) +
+      geom_point() +
+      geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+      coord_flip() +
+      labs(title = "Hazard ratio (95% CI)",
+           x = "Variables",
+           y = "Hazard Ratio") +
+      theme_minimal(base_size = 15)
+    ggsave(file_name, plot = p, width = 10, height = 15)
+  }
+
+  plot_forest(cox_df1, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_cvh.svg")
+  plot_forest(cox_df2, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_alcohol.svg")
+  plot_forest(cox_df3, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_mental.svg")
+  plot_forest(cox_df4, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_10_scores.svg")
+
+  # Fit models and plot forest plots separately for males and females
+  fit_and_plot <- function(data, prefix) {
+    res.cox5 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + CVH_level)
+    res.cox6 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + alcohol_score)
+    res.cox7 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + mental_health_score)
+    res.cox8 <- fit_cox_models(data, Surv(time, status) ~ age + TDI + ethnicity + education + income + family_history + physical_activity_score + mental_health_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score)
+
+    cox_df5 <- extract_cox_results(res.cox5)
+    cox_df6 <- extract_cox_results(res.cox6)
+    cox_df7 <- extract_cox_results(res.cox7)
+    cox_df8 <- extract_cox_results(res.cox8)
+
+    plot_forest(cox_df5, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_cvh_", prefix, ".svg"))
+    plot_forest(cox_df6, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_alcohol_", prefix, ".svg"))
+    plot_forest(cox_df7, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_mental_", prefix, ".svg"))
+    plot_forest(cox_df8, paste0("C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_10_scores_", prefix, ".svg"))
+  }
+
+  fit_and_plot(data_cox_male, "Male")
+  perform_survival_analysis(data_cox_male, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc", "Male")
+  fit_and_plot(data_cox_female, "Female")
+  perform_survival_analysis(data_cox_female, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc", "Female")
+}
+```
+
+
+```{r unweighted calculation of 1,000 person-years, km curve, rate difference (RD)}
+library(survival)
+library(dplyr)
+library(survminer)
+library(epitools)
+
+# Calculate the number of events per 1000 person-years
+fun_calculate_1000PYs <- function(data) {
+  data <- data %>%
+    rowwise() %>%
+    mutate(
+      result0 = list(prop.test(events, total_PYs, p = 0.5, alternative = "two.sided", conf.level = 0.95)),
+      ci = list(result0[["conf.int"]]),
+      PYs_CI = paste("(", round(ci[1] * 1000, 2), ", ", round(ci[2] * 1000, 2), ")", sep = ""),
+      PYs = round((events / total_PYs) * 1000, 2),
+      `pyears (95% CI)` = paste0(PYs, " ", PYs_CI)
+    ) %>%
+    select(CVH_level, events, total_PYs, PYs, `pyears (95% CI)`)
+  return(data)
+}
+
+# Extract estimate, confidence interval, and p-value into a data frame
+extract_ird_to_df <- function(ird_list) {
+  df <- data.frame(
+    comparison = character(),
+    estimate = numeric(),
+    conf.int.lower = numeric(),
+    conf.int.upper = numeric(),
+    p.value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (comparison in names(ird_list)) {
+    estimate <- round(ird_list[[comparison]]$estimate, 2)
+    conf.int <- ird_list[[comparison]]$conf.int
+    conf.int.lower = round(conf.int[1], 2)
+    conf.int.upper = round(conf.int[2], 2)
+    est.ci <- paste(estimate, " (", conf.int.lower, ", ", conf.int.upper, ")")
+    p.value <- ird_list[[comparison]]$p.value
+    
+    df <- rbind(df, data.frame(
+      comparison = comparison,
+      estimate = estimate,
+      conf.int.lower = conf.int[1],
+      conf.int.upper = conf.int[2],
+      est.ci = est.ci,
+      p.value = p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  return(df)
+}
+
+# Main function
+analyze_survival <- function(data_cox, output_dir, type) {
+  # Log-rank test
+  sur.diff <- survdiff(Surv(time, status) ~ CVH_level, data = data_cox)
+  print(sur.diff)
+  
+  km <- survfit(Surv(time, status == 1) ~ CVH_level, data = data_cox)
+  summary_km <- summary(km)
+  
+  E <- data.frame(
+    CVH_level = levels(data_cox$CVH_level),
+    events = summary_km$table[, "events", drop = FALSE]
+  )
+  
+  TPY <- data_cox %>%
+    dplyr::group_by(CVH_level) %>%
+    dplyr::summarise(total_PYs = sum(time, na.rm = TRUE))
+  PY <- merge(E, TPY, by = "CVH_level", all = TRUE)
+  PY <- PY %>%
+    arrange(factor(CVH_level, levels = c("Low CVH", "Moderate CVH", "High CVH")))
+  
+  result <- fun_calculate_1000PYs(PY)
+  write.csv(result, file.path(output_dir, paste0(type, "_unweighted_1000PYs.csv")), row.names = FALSE)
+  
+  km_plot <- ggsurvplot(km,
+                        legend.title = "CVH level",
+                        legend.labs = c("Low CVH", "Moderate CVH", "High CVH"),
+                        xlab = "years",
+                        xlim = c(0, 16),
+                        fun = "pct"
+  )
+  km_plot
+  km_data <- km_plot$plot$data
+  df_km_curve <- data.frame(
+    Time = km_data$time,
+    CumHaz = km_data$surv,
+    CumHazLower = km_data$lower,
+    CumHazUpper = km_data$upper,
+    Group = km_data$strata
+  )
+  write.csv(df_km_curve, file.path(output_dir, paste0(type, "_unweighted_km.csv")), row.names = FALSE)
+  
+  custom_colors <- c("#FF3700", "#FFC125", "#66CD00")
+  p <- ggsurvplot(km,
+                  pval = TRUE,
+                  pval.coord = c(0, 0.75),
+                  pval.method = FALSE,
+                  pval.method.size = 5,
+                  pval.method.coord = c(0, 0.8),
+                  conf.int = TRUE,
+                  risk.table = TRUE,
+                  risk.table.height = 0.25,
+                  risk.table.col = "strata",
+                  risk.table.y.text.col = TRUE,
+                  risk.table.y.text = FALSE,
+                  risk.table.title = "Number at risk",
+                  fontsize = 5,
+                  palette = custom_colors,
+                  title = "Kaplan-Meier Curve for CVH level",
+                  legend.title = "CVH level",
+                  legend.labs = c("Low CVH", "Moderate CVH", "High CVH"),
+                  legend = "right",
+                  surv.median.line = "hv",
+                  xlab = "years",
+                  ylab = "Survival probability",
+                  break.x.by = 4,
+                  break.y.by = 0.1,
+                  xlim = c(0, 16),
+                  ylim = c(0.7, 1)
+  )
+  print(p)
+  ggsave(file.path(output_dir, paste0(type, "_unweighted_km.svg")), plot = p$plot, width = 900 / 72, height = 1080 / 72, units = "in")
+  
+  res.cox <- coxph(formula = Surv(time, status) ~ CVH_level, data = data_cox)
+  summary(res.cox, extend = FALSE)
+  cox_model_pyears <- pyears(res.cox, scale = 1)
+  summary(cox_model_pyears, rate = TRUE, ci.r = TRUE)
+  
+  ird_list <- list()
+  levels <- unique(data_cox$CVH_level)
+  
+  for (i in 1:(length(levels) - 1)) {
+    for (j in (i + 1):length(levels)) {
+      level_i <- levels[i]
+      level_j <- levels[j]
+      
+      cox_IRD <- ratedifference(
+        cox_model_pyears$event[level_i], 
+        cox_model_pyears$event[level_j], 
+        cox_model_pyears$pyears[level_i], 
+        cox_model_pyears$pyears[level_j], 
+        CRC = TRUE, 
+        conf.level = 0.95
+      )
+      
+      ird_estimate_per_1000 <- cox_IRD$estimate * 1000
+      ird_conf_int_per_1000 <- cox_IRD$conf.int * 1000
+      ird_p_value <- cox_IRD$p.value
+      
+      ird_list[[paste(level_i, "vs", level_j)]] <- list(
+        estimate = ird_estimate_per_1000,
+        conf.int = ird_conf_int_per_1000,
+        p.value = ird_p_value
+      )
+    }
+  }
+  
+  ird_df <- extract_ird_to_df(ird_list)
+  print(ird_df)
+}
+```
+
+
+```{r weighted calculation of 1,000 person-years, km curve, rate difference (RD)}
+library(survival)
+library(survey)
+library(ggplot2)
+
+# Function to perform survival analysis and plot Kaplan-Meier curves
+perform_survival_analysis <- function(data_cox, output_dir, type) {
+  # Log-rank test
+  sur.diff <- survdiff(Surv(time, status) ~ CVH_level, data = data_cox)
+  print(sur.diff)
+  
+  # Calculate Kaplan-Meier survival curves
+  km <- svykm(Surv(time, status == 1) ~ CVH_level, design = data_cox, se = TRUE)
+  
+  # Extract survival curve data
+  extract_km_data <- function(km, level) {
+    data.frame(
+      time = km[[level]]$time,
+      surv = km[[level]]$surv,
+      lower = km[[level]]$surv - 1.96 * sqrt(km[[level]]$varlog),
+      upper = km[[level]]$surv + 1.96 * sqrt(km[[level]]$varlog),
+      strata = level
+    )
+  }
+  
+  km_data <- do.call(rbind, lapply(names(km), function(level) extract_km_data(km, level)))
+  write.csv(km_data, file.path(output_dir, paste0(type, "_weighted_km.csv")), row.names = FALSE)
+  
+  # Plot Kaplan-Meier survival curves
+  p <- ggplot(km_data, aes(x = time, y = surv, color = strata)) +
+    geom_step() +
+    geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+    labs(title = "Kaplan-Meier Curve for CVH level",
+         x = "Time",
+         y = "Survival Probability",
+         color = "CVH level") +
+    theme_minimal() +
+    scale_color_manual(values = c("#FF3700", "#FFC125", "#66CD00")) +
+    theme(legend.position = "right")
+  
+  # Save the survival curve as an SVG file
+  ggsave(file.path(output_dir, paste0(type, "_km_curve.svg")), plot = p, width = 900 / 72, height = 1080 / 72, units = "in")
+  
+  # Calculate the total number of individuals for each CVH_level
+  total_counts <- c(
+    "Low CVH" = sum(data_cox$variables$CVH_level == "Low CVH"),
+    "Moderate CVH" = sum(data_cox$variables$CVH_level == "Moderate CVH"),
+    "High CVH" = sum(data_cox$variables$CVH_level == "High CVH")
+  )
+  
+  # Manually calculate the total number and number at risk at specific time points
+  calculate_risk_table <- function(km, level, time_points) {
+    total_n <- total_counts[level]
+    n.risk <- sapply(time_points, function(t) sum(km[[level]]$time >= t))
+    data.frame(
+      time = c(0, 4, 8, 12),
+      n.risk = n.risk,
+      total_n = total_n - n.risk,
+      strata = level
+    )
+  }
+  
+  max_time <- max(km_data$time)
+  time_points <- c(max_time + 1e-8, max_time - 4, max_time - 8, max_time - 12)
+  risk_table <- do.call(rbind, lapply(names(km), function(level) calculate_risk_table(km, level, time_points)))
+
+  # Print the risk table
+  print(risk_table)
+}
+```
+
+
+``` {r life expectancy}
+# install.packages("relsurv")
+# install.packages("flexsurv")
+library(relsurv)
+library(flexsurv)
+
+fn_le <- function(sur) {
+  sur <- sur %>%
+    mutate(
+      age_group = case_when(
+        age < 50 ~ "40-<50", # Reference
+        age >= 50 & age < 60 ~ "50-<60",
+        age >= 60 & age < 70 ~ "60-70",
+        age >= 70 & age < 80 ~ "70-80",
+        age >= 80 ~ "80+"
+      ),
+      age_group = factor(age_group, levels = c("40-<50", "50-<60", "60-70", "70-80", "80+")),
+      sex = case_when(
+        sex == 1 ~ "Male",
+        sex == 0 ~ "Female"
+      ),
+      ethnicity = case_when(
+        ethnicity == 1 ~ "Mexican American",
+        ethnicity == 2 ~ "Other Hispanic",
+        ethnicity == 3 ~ "Non-Hispanic White",
+        ethnicity == 4 ~ "Non-Hispanic Black",
+        ethnicity == 5 ~ "Other Race - Including Multi-Racial"
+      ),
+      education = case_when(
+        education == 1 ~ "Less Than 9th Grade",
+        education == 2 ~ "9-11th Grade (Includes 12th grade with no diploma)",
+        education == 3 ~ "High School Grad/GED or Equivalent",
+        education == 4 ~ "Some College or AA degree",
+        education == 5 ~ "College Graduate or above"
+      ),
+      income = case_when(
+        income == 1 ~ "$ 0 to $ 14,999",
+        income == 2 ~ "$15,000 to $34,999",
+        income == 3 ~ "$35,000 to $64,999",
+        income == 4 ~ "$65,000 and Over"
+      ),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      CVH_level = case_when(
+        total_score < 60 ~ 1, # Reference
+        total_score >= 60 & total_score < 80 ~ 2,
+        total_score >= 80 ~ 3
+      ),
+      CVH_level = factor(CVH_level, levels = c(1, 2, 3), labels = c("Low", "Moderate", "High"))
+    )
+
+  sur_design <- sur
+  sur_design <- svydesign(data = sur_design, ids = ~SDMVPSU, strata = ~SDMVSTRA, nest = TRUE, weights = ~WTDR2D, survey.lonely.psu = "adjust")
+  total_score_Q10 <- svyquantile(~total_score, sur_design, quantiles = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))
+  total_score_Q10 <- total_score_Q10$total_score[, "quantile"]
+
+  # total_score_Q10 <- quantile(sur$total_score, c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))
+  sur$total_score_Q10 <- cut(sur$total_score, c(-Inf, total_score_Q10[1], total_score_Q10[2], total_score_Q10[3], total_score_Q10[4], total_score_Q10[5], total_score_Q10[6], total_score_Q10[7], total_score_Q10[8], total_score_Q10[9], Inf), labels = c('Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10'))
+  unique_values <- sapply(sur[, c("sex", "ethnicity", "education", "income", "CVH_level")], function(x) length(unique(x)))
+  print(unique_values)
+
+  # Flexible parametric survival model
+  # Fit a Weibull survival model
+  fitg <- flexsurvreg(formula = Surv(survival_time, death) ~ total_score + age + sex + TDI + ethnicity + education + income + family_history, 
+                      data = sur, dist = "weibull")
+
+  # View model results
+  summary(fitg)
+
+  # Predict life expectancy for each individual from 1 to 60 years
+  flex_pred <- data.frame(n = 1)
+  for (j in 1:60) {
+    flex_pred <- cbind(flex_pred, predict(fitg, sur, type = 'rmst', time = j)$.pred_rmst)
+  }
+
+  # Predict life expectancy to age 100 for each individual
+  sur$predict_flex <- 0
+  for (j in 1:nrow(sur)) {
+    sur[j, ]$predict_flex <- flex_pred[j, (100 - sur[j, ]$age + 1)]
+  }
+
+  # Fit Cox proportional hazards model
+  res.cox <- coxph(Surv(survival_time, death) ~ total_score + age + sex + TDI + ethnicity + education + income + family_history, data = sur, x = TRUE)
+  final_fit <- autoReg(res.cox, uni = TRUE, threshold = 0.05, final = TRUE)
+  myft(final_fit)
+
+  cox_model <- coxph(Surv(survival_time, death) ~ total_score + age + sex + TDI + education + income + family_history, data = sur, x = TRUE)
+
+  len <- length(sur)
+  except_life_df <- data.frame(nrow = len)
+  risk_score <- predict(cox_model, type = "lp")
+  base_surv <- survfit(cox_model)
+  for (i in 1:max(sur$survival_time)) {
+    surv_prob_1year <- summary(base_surv, times = i)$surv
+    prob_1year <- surv_prob_1year^exp(risk_score)
+    except_life_df <- cbind(except_life_df, prob_1year)
+  }
+  sur$predict_cox <- rowSums(except_life_df[, -c(1)])
+
+  # COX results
+  # Mean survival time by age group and death status
+  sur %>% group_by(age_group, death) %>% summarise(P = mean(survival_time))
+
+  # Mortality rate by age group
+  sur %>% group_by(age_group) %>% summarise(P = mean(death))
+
+  # Life expectancy by CVH level
+  sur %>% dplyr::group_by(age_group, CVH_level) %>% dplyr::summarise(MEAN = mean(predict_cox), std = sd(predict_cox)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")"))
+
+  sur %>% dplyr::group_by(age_group, sex, total_score_Q10) %>% dplyr::summarise(MEAN = mean(predict_cox), std = sd(predict_cox)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")"))
+
+  # Flexible parametric results
+  sur %>% dplyr::group_by(age_group, sex) %>% dplyr::summarise(MEAN = mean(predict_flex), std = sd(predict_flex)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")")) %>% filter(sex == 'Male')
+
+  sur %>% dplyr::group_by(age_group, sex) %>% dplyr::summarise(MEAN = mean(predict_flex), std = sd(predict_flex)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")")) %>% filter(sex == 'Female')
+
+  result <- sur %>% dplyr::group_by(age_group, sex, CVH_level) %>% dplyr::summarise(MEDIAN = median(predict_flex), MEAN = mean(predict_flex), std = sd(predict_flex)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")")) %>% filter(sex == 'Male')
+
+  write.csv(result, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/result_male.csv", row.names = FALSE)
+
+  result <- sur %>% group_by(age_group, sex, CVH_level) %>% summarise(MEDIAN = median(predict_flex), MEAN = mean(predict_flex), std = sd(predict_flex)) %>% transform(ci = paste("(", round(MEAN - 1.96 * std, 3), round(MEAN + 1.96 * std, 3), ")")) %>% filter(sex == 'Female')
+
+  write.csv(result, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/result_female.csv", row.names = FALSE)
+
+  # ANOVA for life expectancy by CVH level
+  an <- aov(predict_flex ~ CVH_level, data = sur[sur$age_group == '40-<50' & sur$sex == 'Male', ])
+  summary(an)
+}
+
+# Clean up environment
+rm(base_surv, cox_model, except_life_df, final_fit, fitg, flex_pred, res.cox, result, sur, sur_design, i, j, len, prob_1year, risk_score, surv_prob_1year, total_score_Q10, unique_values)
+```
+
+
+``` {r multivariate cox subgroup analysis——unweighted (function)}
+# install.packages("jstable")
+# install.packages("forestploter")
+library(readr)
+library(forestploter)
+library(grid)
+library(dplyr)
+library(jstable)
+library(Publish)
+
+analyze_data <- function(data, output_dir) {
+  library(dplyr)
+  library(survival)
+  library(forestplot)
+  
+  data_cox <- data %>%
+    mutate(
+      age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ "≥60 years"
+      ),
+      age_group = factor(age_group, levels = c("<60 years", "≥60 years")),
+      sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+      TDI = factor(TDI_sub, levels = c(0, 1), labels = c("Above median", "Others")),
+      education = factor(education_sub, levels = c(0, 1), labels = c("Low education", "Others")),
+      income = factor(income_sub, levels = c(0, 1), labels = c("<31,000£", "Others")),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      CVH_level = case_when(
+        total_score < 60 ~ 1, # Reference
+        total_score >= 60 & total_score < 80 ~ 2,
+        total_score >= 80 ~ 3
+      ),
+      CVH_level = factor(CVH_level, levels = c(1, 2, 3), labels = c("Low CVH", "Moderate CVH", "High CVH")),
+      ideal_PA = ifelse(physical_activity_score >= 80, 1, 0),
+      ideal_alcohol = ifelse(alcohol_score >= 75, 1, 0),
+      ideal_smoke = ifelse(smoke_score >= 80, 1, 0),
+      ideal_HDI = ifelse(HDI_score >= 80, 1, 0),
+      ideal_sleep = ifelse(sleep_score >= 80, 1, 0),
+      ideal_BMI = ifelse(BMI_score >= 70, 1, 0),
+      ideal_BL = ifelse(BL_score >= 60, 1, 0),
+      ideal_BG = ifelse(BG_score >= 60, 1, 0),
+      ideal_BP = ifelse(BP_score >= 75, 1, 0),
+      ideal_mental = ifelse(mental_health_score >= 80, 1, 0),
+      ideal_number = ideal_PA + ideal_alcohol + ideal_smoke + ideal_HDI + ideal_sleep + ideal_BMI + ideal_BL + ideal_BG + ideal_BP + ideal_mental,
+      ideal_number = case_when(
+        ideal_number <= 5 ~ "0-5",
+        ideal_number >= 6 & ideal_number <= 8 ~ "6-8",
+        ideal_number >= 9 ~ "9-10"
+      ),
+      ideal_number = factor(ideal_number, levels = c("0-5", "6-8", "9-10"))
+    )
+  
+  # Perform subgroup analysis using Cox proportional hazards model
+  res <- TableSubgroupMultiCox(
+    formula = Surv(time, status) ~ CVH_level,
+    var_subgroups = c("age_group", "sex", "TDI", "education", "income", "family_history", "ideal_number"),
+    var_cov = c("age", "sex", "TDI", "education", "income", "family_history", "ideal_number"),
+    data = data_cox,
+    decimal.hr = 2,
+    decimal.percent = 1,
+    decimal.pvalue = 3,
+    line = FALSE
+  )
+  
+  print(res)
+  write.csv(res, file.path(output_dir, 'subgroup_analysis_results.csv'), row.names = FALSE)
+  
+  # Convert p-values to numeric
+  res$`P value` <- sapply(res$`P value`, function(x) {
+    if (is.numeric(x)) {
+      return(x)
+    } else if (is.character(x)) {
+      return(as.numeric(x))
+    } else if (is.list(x)) {
+      return(as.numeric(x[[1]]))
+    } else {
+      return(NA)
+    }
+  })
+  
+  # Prepare data for forest plot
+  plot_df <- res
+  plot_df[, c(2:4, 8:10)][is.na(plot_df[, c(2:4, 8:10)])] <- " "
+  plot_df$` ` <- paste(rep(" ", nrow(plot_df)), collapse = " ")
+  plot_df[, 5:7] <- apply(plot_df[, 5:7], 2, as.numeric)
+  
+  # Define forest plot theme
+  tm <- forest_theme(
+    base_size = 10,
+    refline_col = "grey",
+    refline_lwd = 2,
+    ci_col = "#9FC1E6",
+    refline_lty = "solid",
+    arrow_type = "closed",
+    ci_lty = 1,
+    ci_Theight = 0.2,
+    ci_lwd = 2.3
+  )
+  
+  # Subset results for forest plot
+  res1 <- res[, c(1:3, 9, 10, 7, 8)]
+  
+  # Create forest plot
+  p <- forest(
+    data = plot_df[, c(1:4, 11, 9, 10)],
+    est = plot_df$`Point Estimate`,
+    lower = plot_df$Lower,
+    upper = plot_df$Upper,
+    ci_column = 5,
+    xlim = c(0, 1.2),
+    ticks_at = c(0, 1.0, 1.2),
+    ref_line = 1,
+    sizes = 0.8,
+    theme = tm
+  )
+  print(p)
+  dev.off()
+  
+  # Perform survival analysis for subgroups
+  analyze_survival(data_cox %>% filter(age_group == "<60 years"), output_dir, "Less than 60 years")
+  analyze_survival(data_cox %>% filter(age_group == "≥60 years"), output_dir, "60 years and older")
+  analyze_survival(data_cox %>% filter(sex == "Male"), output_dir, "Male")
+  analyze_survival(data_cox %>% filter(sex == "Female"), output_dir, "Female")
+  analyze_survival(data_cox %>% filter(TDI == "Above median"), output_dir, "TDI_Above median")
+  analyze_survival(data_cox %>% filter(TDI == "Others"), output_dir, "TDI_Others")
+  analyze_survival(data_cox %>% filter(education == "Low education"), output_dir, "Edu_Low education")
+  analyze_survival(data_cox %>% filter(education == "Others"), output_dir, "Edu_Others")
+  analyze_survival(data_cox %>% filter(income == "<31,000£"), output_dir, "Inc_Less than 31,000£")
+  analyze_survival(data_cox %>% filter(income == "Others"), output_dir, "Inc_Others")
+  analyze_survival(data_cox %>% filter(family_history == "No"), output_dir, "family_No")
+  analyze_survival(data_cox %>% filter(family_history == "Yes"), output_dir, "family_Yes")
+  analyze_survival(data_cox %>% filter(ideal_number == "0-5"), output_dir, "ideal0-5")
+  analyze_survival(data_cox %>% filter(ideal_number == "6-8"), output_dir, "ideal6-8")
+  analyze_survival(data_cox %>% filter(ideal_number == "9-10"), output_dir, "ideal9-10")
+}
+
+# Clean up environment
+rm(df_km_curve, E, km, km_data, km_plot, p, p1, p2, p3, PY, res.cox1, res.cox2, res.cox3, result, summary_km, TPY, custom_colors, calculate_1000PYs)
+```
+
+
+``` {r multivariate cox subgroup analysis——weighted (function)}
+library(gridExtra)
+fn_coxph_sub_weighted <- function(data_cox) {
+  # Data preprocessing
+  data_cox <- data_cox %>%
+    mutate(
+      age_group = case_when(
+        age < 60 ~ "<60 years", # Reference
+        age >= 60 ~ ">=60 years"
+      ),
+      age_group = factor(age_group, levels = c("<60 years", ">=60 years")),
+      sex = factor(sex, levels = c(1, 0), labels = c("Male", "Female")),
+      ethnicity = factor(ethnicity, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Mexican American", "Other Hispanic", "Non-Hispanic White", "Non-Hispanic Black", "Other Race - Including Multi-Racial")),
+      education = factor(education, levels = c(1, 2, 3, 4, 5),
+                         labels = c("Less Than 9th Grade", "9-11th Grade (Includes 12th grade with no diploma)", "High School Grad/GED or Equivalent", "Some College or AA degree", "College Graduate or above")),
+      income = factor(income, levels = c(1, 2, 3, 4),
+                      labels = c("$0 to $14,999", "$15,000 to $34,999", "$35,000 to $64,999", "$65,000 and Over")),
+      family_history = factor(family_history, levels = c(0, 1), labels = c("No", "Yes")),
+      physical_activity_score = case_when(
+        physical_activity_score < 60 ~ "Low", # Reference
+        physical_activity_score >= 60 & physical_activity_score < 100 ~ "Moderate",
+        physical_activity_score >= 100 ~ "High"
+      ),
+      ideal_PA = ifelse(physical_activity_score >= 80, 1, 0),
+      ideal_alcohol = ifelse(alcohol_score >= 75, 1, 0),
+      ideal_smoke = ifelse(smoke_score >= 80, 1, 0),
+      ideal_HDI = ifelse(HDI_score >= 80, 1, 0),
+      ideal_sleep = ifelse(sleep_score >= 80, 1, 0),
+      ideal_BMI = ifelse(BMI_score >= 70, 1, 0),
+      ideal_BL = ifelse(BL_score >= 60, 1, 0),
+      ideal_BG = ifelse(BG_score >= 60, 1, 0),
+      ideal_BP = ifelse(BP_score >= 75, 1, 0),
+      ideal_mental = ifelse(mental_health_score >= 80, 1, 0),
+      ideal_number = ideal_PA + ideal_alcohol + ideal_smoke + ideal_HDI + ideal_sleep + ideal_BMI + ideal_BL + ideal_BG + ideal_BP + ideal_mental,
+      ideal_number = case_when(
+        ideal_number <= 5 ~ "0-5",
+        ideal_number >= 6 & ideal_number <= 8 ~ "6-8",
+        ideal_number >= 9 ~ "9-10"
+      ),
+      ideal_number = factor(ideal_number, levels = c("0-5", "6-8", "9-10")),
+      physical_activity_score = factor(physical_activity_score, levels = c("Low", "Moderate", "High")),
+      alcohol_score = case_when(
+        alcohol_score < 40 ~ "Low", # Reference
+        alcohol_score >= 40 & alcohol_score < 100 ~ "Moderate",
+        alcohol_score >= 100 ~ "High"
+      ),
+      alcohol_score = factor(alcohol_score, levels = c("Low", "Moderate", "High")),
+      smoke_score = case_when(
+        smoke_score < 50 ~ "Low", # Reference
+        smoke_score >= 50 & smoke_score < 100 ~ "Moderate",
+        smoke_score >= 100 ~ "High"
+      ),
+      smoke_score = factor(smoke_score, levels = c("Low", "Moderate", "High")),
+      HDI_score = case_when(
+        HDI_score < 50 ~ "Low", # Reference
+        HDI_score >= 50 & HDI_score < 80 ~ "Moderate",
+        HDI_score >= 80 ~ "High"
+      ),
+      HDI_score = factor(HDI_score, levels = c("Low", "Moderate", "High")),
+      sleep_score = case_when(
+        sleep_score < 70 ~ "Low", # Reference
+        sleep_score >= 70 & sleep_score < 100 ~ "Moderate",
+        sleep_score >= 100 ~ "High"
+      ),
+      sleep_score = factor(sleep_score, levels = c("Low", "Moderate", "High")),
+      BMI_score = case_when(
+        BMI_score < 70 ~ "Low", # Reference
+        BMI_score >= 70 & BMI_score < 100 ~ "Moderate",
+        BMI_score >= 100 ~ "High"
+      ),
+      BMI_score = factor(BMI_score, levels = c("Low", "Moderate", "High")),
+      BL_score = case_when(
+        BL_score < 60 ~ "Low", # Reference
+        BL_score >= 60 & BL_score < 100 ~ "Moderate",
+        BL_score >= 100 ~ "High"
+      ),
+      BL_score = factor(BL_score, levels = c("Low", "Moderate", "High")),
+      BG_score = case_when(
+        BG_score < 60 ~ "Low", # Reference
+        BG_score >= 60 & BG_score < 100 ~ "Moderate",
+        BG_score >= 100 ~ "High"
+      ),
+      BG_score = factor(BG_score, levels = c("Low", "Moderate", "High")),
+      BP_score = case_when(
+        BP_score < 50 ~ "Low", # Reference
+        BP_score >= 50 & BP_score < 75 ~ "Moderate",
+        BP_score >= 75 ~ "High"
+      ),
+      BP_score = factor(BP_score, levels = c("Low", "Moderate", "High")),
+      mental_health_score = case_when(
+        mental_health_score < 50 ~ "Low", # Reference
+        mental_health_score >= 50 & mental_health_score < 100 ~ "Moderate",
+        mental_health_score >= 100 ~ "High"
+      ),
+      mental_health_score = factor(mental_health_score, levels = c("Low", "Moderate", "High"))
+    )
+  
+  # Data weighting
+  data_cox_age_under <- data_cox %>% filter(age_group == "<60 years")
+  data_cox_age_over <- data_cox %>% filter(age_group == ">=60 years")
+  data_cox_TDI_above <- data_cox %>% filter(TDI_sub == 0)
+  data_cox_TDI_other <- data_cox %>% filter(TDI_sub == 1)
+  data_cox_education_low <- data_cox %>% filter(education_sub == 0)
+  data_cox_education_other <- data_cox %>% filter(education_sub == 1)
+  data_cox_income_under <- data_cox %>% filter(income_sub == 0)
+  data_cox_income_other <- data_cox %>% filter(income_sub == 1)
+  data_cox_family_history_no <- data_cox %>% filter(family_history == "No")
+  data_cox_family_history_yes <- data_cox %>% filter(family_history == "Yes")
+  data_cox_ideal_low <- data_cox %>% filter(ideal_number == "0-5")
+  data_cox_ideal_moderate <- data_cox %>% filter(ideal_number == "6-8")
+  data_cox_ideal_high <- data_cox %>% filter(ideal_number == "9-10")
+  
+  data_cox_age_under <- svydesign(data=data_cox_age_under, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_age_over <- svydesign(data=data_cox_age_over, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_TDI_above <- svydesign(data=data_cox_TDI_above, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_TDI_other <- svydesign(data=data_cox_TDI_other, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_education_low <- svydesign(data=data_cox_education_low, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_education_other <- svydesign(data=data_cox_education_other, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_income_under <- svydesign(data=data_cox_income_under, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_income_other <- svydesign(data=data_cox_income_other, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_family_history_no <- svydesign(data=data_cox_family_history_no, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_family_history_yes <- svydesign(data=data_cox_family_history_yes, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_ideal_low <- svydesign(data=data_cox_ideal_low, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_ideal_moderate <- svydesign(data=data_cox_ideal_moderate, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  data_cox_ideal_high <- svydesign(data=data_cox_ideal_high, ids=~SDMVPSU, strata=~SDMVSTRA, nest=TRUE, weights=~WTDR2D, survey.lonely.psu="adjust")
+  
+  
+  perform_survival_analysis(data_cox_age_under, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","age_under")
+  perform_survival_analysis(data_cox_age_over, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","age_over")
+  perform_survival_analysis(data_cox_TDI_above, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","TDI_above")
+  perform_survival_analysis(data_cox_TDI_other, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","TDI_other")
+  perform_survival_analysis(data_cox_education_low, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","education_low")
+  perform_survival_analysis(data_cox_education_other, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","education_other")
+  perform_survival_analysis(data_cox_income_under, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","income_under")
+  perform_survival_analysis(data_cox_income_other, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","income_other")
+  perform_survival_analysis(data_cox_family_history_no, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","family_history_no")
+  perform_survival_analysis(data_cox_family_history_yes, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","family_history_yes")
+  # perform_survival_analysis(data_cox_ideal_low, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","ideal_low")
+  perform_survival_analysis(data_cox_ideal_moderate, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","ideal_moderate")
+  # perform_survival_analysis(data_cox_ideal_high, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc","ideal_high")
+  
+  
+  # Fit Cox proportional hazards models
+  fit_cox_models <- function(data, formula) {
+    svycoxph(formula, design = data)
+  }
+
+  res.cox1 <- fit_cox_models(data_cox_age_under, Surv(time, status) ~ sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox2 <- fit_cox_models(data_cox_age_over, Surv(time, status) ~ sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox3 <- fit_cox_models(data_cox_TDI_above, Surv(time, status) ~ age + sex + ethnicity + education + income + family_history + CVH_level)
+  res.cox4 <- fit_cox_models(data_cox_TDI_other, Surv(time, status) ~ age + sex + ethnicity + education + income + family_history + CVH_level)
+  res.cox5 <- fit_cox_models(data_cox_education_low, Surv(time, status) ~ age + sex + TDI + ethnicity + income + family_history + CVH_level)
+  res.cox6 <- fit_cox_models(data_cox_education_other, Surv(time, status) ~ age + sex + TDI + ethnicity + income + family_history + CVH_level)
+  res.cox7 <- fit_cox_models(data_cox_income_under, Surv(time, status) ~ age + sex + TDI + ethnicity + education + family_history + CVH_level)
+  res.cox8 <- fit_cox_models(data_cox_income_other, Surv(time, status) ~ age + sex + TDI + ethnicity + education + family_history + CVH_level)
+  res.cox9 <- fit_cox_models(data_cox_family_history_no, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + CVH_level)
+  res.cox10 <- fit_cox_models(data_cox_family_history_yes, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + CVH_level)
+  res.cox11 <- fit_cox_models(data_cox_ideal_low, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox12 <- fit_cox_models(data_cox_ideal_moderate, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level)
+  res.cox13 <- fit_cox_models(data_cox_ideal_high, Surv(time, status) ~ age + sex + TDI + ethnicity + education + income + family_history + CVH_level)
+
+  # Extract model results and create dataframes
+  extract_cox_results <- function(res.cox) {
+    cox_summary <- summary(res.cox)
+    coefficients <- cox_summary$coefficients
+    conf.int <- cox_summary$conf.int
+    data.frame(
+      term = rownames(coefficients),
+      estimate = coefficients[, "coef"],
+      std.error = coefficients[, "se(coef)"],
+      p.value = coefficients[, "Pr(>|z|)"],
+      HR = exp(coefficients[, "coef"]),
+      lower = conf.int[, "lower .95"],
+      upper = conf.int[, "upper .95"]
+    ) %>%
+      mutate(
+        label = sprintf("HR = %.2f\n95%% CI = %.2f - %.2f\nP = %.3f", HR, lower, upper, p.value)
+      )
+  }
+
+  res.cox1  <- extract_cox_results(res.cox1 )
+  res.cox2  <- extract_cox_results(res.cox2 )
+  res.cox3  <- extract_cox_results(res.cox3 )
+  res.cox4  <- extract_cox_results(res.cox4 )
+  res.cox5  <- extract_cox_results(res.cox5 )
+  res.cox6  <- extract_cox_results(res.cox6 )
+  res.cox7  <- extract_cox_results(res.cox7 )
+  res.cox8  <- extract_cox_results(res.cox8 )
+  res.cox9  <- extract_cox_results(res.cox9 )
+  res.cox10 <- extract_cox_results(res.cox10)
+  res.cox11 <- extract_cox_results(res.cox11)
+  res.cox12 <- extract_cox_results(res.cox12)
+  res.cox13 <- extract_cox_results(res.cox13)
+
+  # Create forest plots
+  plot_forest <- function(cox_df, file_name) {
+    p <- ggplot(cox_df, aes(x = term, y = estimate)) +
+      geom_point() +
+      geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+      coord_flip() +
+      labs(title = "Hazard ratio (95% CI)",
+           x = "Variables",
+           y = "Hazard Ratio") +
+      theme_minimal(base_size = 15)
+    ggsave(file_name, plot = p, width = 10, height = 15)
+  }
+
+  plot_forest(res.cox1 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_under_60_years.svg")
+  plot_forest(res.cox2 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_60_years_and_over.svg")
+  plot_forest(res.cox3 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_TDI_above_median.svg")
+  plot_forest(res.cox4 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_TDI_others.svg")
+  plot_forest(res.cox5 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_low_education.svg")
+  plot_forest(res.cox6 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_other_education.svg")
+  plot_forest(res.cox7 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_income_under_31k.svg")
+  plot_forest(res.cox8 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_income_others.svg")
+  plot_forest(res.cox9 , "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_family_history_no.svg")
+  plot_forest(res.cox10, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_family_history_yes.svg")
+  plot_forest(res.cox11, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_ideal_0-5.svg")
+  plot_forest(res.cox12, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_ideal_6-8.svg")
+  plot_forest(res.cox13, "C:/Users/pc/Desktop/yfr/result_nhanes/result/le10_cc/weighted_ideal_9-10.svg")
+}
+```
+

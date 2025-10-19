@@ -1,0 +1,871 @@
+---
+title: "UKB_analysis"
+author: "Liwen He"
+date: "2025-10-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r install packages}
+# ======================
+# INSTALLATION SETUP
+# ======================
+
+# Check and install build tools if needed
+if (!requireNamespace("pkgbuild", quietly = TRUE)) {
+  install.packages("pkgbuild")
+  pkgbuild::check_build_tools(debug = TRUE)
+}
+
+# Install devtools for GitHub packages
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+
+# ======================
+# CORE DATA MANIPULATION
+# ======================
+core_pkgs <- c(
+  "lubridate",  # Date/time handling
+  "data.table", # Fast data manipulation
+  "dplyr",      # Data wrangling
+  "readxl",     # Excel files
+  "purrr",      # Functional programming
+  "readr",      # Flat file reading
+  "Hmisc"       # Miscellaneous functions
+)
+install.packages(core_pkgs, dependencies = TRUE)
+
+# ======================
+# SPECIALIZED INSTALLATIONS
+# ======================
+# Install nnet and XML from custom source
+custom_source_pkgs <- c("nnet", "XML")
+tryCatch({
+  install.packages(custom_source_pkgs, type = "source",
+                  repos = "http://h2o-release.s3.amazonaws.com/h2o/latest_stable_R")
+}, error = function(e) {
+  message("Custom source packages failed to install: ", e$message)
+})
+
+# ======================
+# STATISTICAL MODELING
+# ======================
+stats_pkgs <- c(
+  "msm",         # Multi-state models
+  "elect",       # Expected length of stay
+  "mice",        # Multiple imputation
+  "ukbtools"     # UK Biobank utilities
+)
+install.packages(stats_pkgs)
+
+# ======================
+# SURVIVAL ANALYSIS
+# ======================
+survival_pkgs <- c(
+  "timeROC",     # Time-dependent ROC
+  "survivalROC", # Survival ROC
+  "pROC",        # ROC analysis
+  "survminer"    # Survival visualization
+)
+install.packages(survival_pkgs)
+
+# ======================
+# VISUALIZATION
+# ======================
+viz_pkgs <- c(
+  "ggplot2",     # Grammar of graphics
+  "skimr"        # Data summarization
+)
+install.packages(viz_pkgs)
+
+# ======================
+# VERIFICATION
+# ======================
+message("\nInstallation complete. Checking installed packages...")
+required_pkgs <- c(core_pkgs, stats_pkgs, survival_pkgs, viz_pkgs, "nnet", "XML")
+missing_pkgs <- setdiff(required_pkgs, installed.packages()[,"Package"])
+
+if (length(missing_pkgs) > 0) {
+  message("The following packages failed to install:")
+  message(paste(missing_pkgs, collapse = ", "))
+} else {
+  message("All packages installed successfully!")
+}
+
+```
+
+
+```{r load packages}
+# ======================
+# Package Loading Function (with Error Handling)
+# ======================
+safe_load <- function(pkg) {
+  if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+    stop("Package not installed: ", pkg, 
+         "\nPlease run: install.packages('", pkg, "')")
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
+# ======================
+# Core Data Processing Packages
+# ======================
+core_pkgs <- c(
+  "lubridate",  # Date/time manipulation
+  "data.table", # High-performance data operations
+  "dplyr",      # Data wrangling
+  "purrr",      # Functional programming
+  "readr",      # Data import
+  "Hmisc"       # Basic statistical functions
+)
+core_loaded <- sapply(core_pkgs, safe_load)
+
+# ======================
+# Statistical Modeling Packages
+# ======================
+stats_pkgs <- c(
+  "msm",        # Multi-state models
+  "mice",       # Multiple imputation
+  "ukbtools"    # UK Biobank data utilities
+)
+stats_loaded <- sapply(stats_pkgs, safe_load)
+
+# ======================
+# Survival Analysis Packages
+# ======================
+survival_pkgs <- c(
+  "survival",   # Core survival analysis
+  "timeROC",    # Time-dependent ROC
+  "survminer",  # Survival visualizations
+  "pROC"        # ROC curve analysis
+)
+survival_loaded <- sapply(survival_pkgs, safe_load)
+
+# ======================
+# Visualization Packages
+# ======================
+viz_pkgs <- c(
+  "ggplot2",    # Advanced plotting system
+  "skimr"       # Data summary visualization
+)
+viz_loaded <- sapply(viz_pkgs, safe_load)
+
+# ======================
+# Conflict Management
+# ======================
+if ("plyr" %in% loadedNamespaces()) {
+  message("\nNOTE: plyr package detected which may conflict with dplyr",
+          "\nRecommended: detach('package:plyr', unload = TRUE) before using dplyr")
+}
+
+# ======================
+# Session Summary
+# ======================
+loaded_counts <- c(
+  Core = sum(core_loaded),
+  Stats = sum(stats_loaded),
+  Survival = sum(survival_loaded),
+  Viz = sum(viz_loaded),
+  Special = sum(bioage_status)
+)
+
+message("\n===== Package Loading Summary =====")
+message("Successfully loaded ", sum(loaded_counts), " packages across categories:")
+message(paste0("- ", names(loaded_counts), ": ", loaded_counts, collapse = "\n"))
+message("\nR Version: ", R.version.string)
+message("System: ", Sys.info()["sysname"], " ", Sys.info()["machine"])
+message("Working Directory: ", getwd())
+
+# Return loaded package list (invisible)
+invisible(list(
+  core = core_pkgs[core_loaded],
+  stats = stats_pkgs[stats_loaded],
+  survival = survival_pkgs[survival_loaded],
+  viz = viz_pkgs[viz_loaded],
+  special = c(BioAge = bioage_status)
+))
+
+```
+
+
+```{r set global}
+# options(scipen = 999)
+```
+
+
+```{r load data}
+# load("data22.RData")
+```
+
+
+```{r restricted cubic spline}
+library(rms)
+
+dd<-datadist(data_cox)
+options(datadist='dd')
+
+#####################################################################################
+##To examine the nonlinear relationship between LE10 score and outcomes
+#####################################################################################
+#AIC and BIC methods were used to calculate the model fit degree under different node selection to determine the maximum number of festival points
+results <- data.frame(knot = 3:10, AIC = NA, BIC = NA)
+n <- nrow(data_cox)
+for (knot in 3:10) {
+  fit <- cph(Surv(time, status) ~ rcs(total_score, knot) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history, x=TRUE, y=TRUE, data=data_cox)
+  tmp <- extractAIC(fit)
+  results$AIC[knot - 2] <- tmp[2]
+  loglik <- tmp[1] 
+  k <- tmp[2]      
+  results$BIC[knot - 2] <- -2 * loglik + log(n) * k  # calculate BIC
+}
+results  # View AIC and BIC values for the number of nodes
+nk_AIC <- results$knot[which.min(results$AIC)]  
+nk_AIC
+nk_BIC <- results$knot[which.min(results$BIC)] 
+nk_BIC
+
+#Construct and compare models [all nodes with 3.4.5 are constructed and compared]
+fit1 <- cph(Surv(time,status)~rcs(total_score_LE8,3) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit1);fit1
+fit2 <- cph(Surv(time,status)~rcs(total_score_LE8,4) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit2);fit2
+fit3 <- cph(Surv(time,status)~rcs(total_score_LE8,5) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit3);fit3
+
+fit <- cph(Surv(time,status) ~ rcs(total_score,3) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history, x=TRUE, y=TRUE, data=data_cox) 
+fit
+cox.zph(fit,"rank")
+HR<-rms::Predict(fit, total_score, fun=exp, ref.zero=TRUE)
+head(HR)
+anova(fit)
+
+#####################################################################################
+##To examine the nonlinear relationship between alcohol_intake and outcomes
+#####################################################################################
+results <- data.frame(knot = 3:10, AIC = NA, BIC = NA)
+n <- nrow(data_cox) 
+for (knot in 3:10) {
+  fit <- cph(Surv(time, status) ~ rcs(alcohol_intake, knot) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history, x=TRUE, y=TRUE, data=data_cox)
+  tmp <- extractAIC(fit)
+  results$AIC[knot - 2] <- tmp[2]
+  loglik <- tmp[1] 
+  k <- tmp[2]      
+  results$BIC[knot - 2] <- -2 * loglik + log(n) * k  
+}
+results  
+nk_AIC <- results$knot[which.min(results$AIC)]  
+nk_AIC
+nk_BIC <- results$knot[which.min(results$BIC)]  
+nk_BIC
+
+fit1 <- cph(Surv(time,status)~rcs(alcohol_intake,3) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit1);fit1
+fit2 <- cph(Surv(time,status)~rcs(alcohol_intake,4) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit2);fit2
+fit3 <- cph(Surv(time,status)~rcs(alcohol_intake,5) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history,data=data_cox);anova(fit3);fit3
+fit <- cph(Surv(time,status) ~ rcs(alcohol_intake,4) + strat(age_group) + sex + TDI + ethnicity + education + income + family_history, x=TRUE, y=TRUE, data=data_cox) 
+fit
+cox.zph(fit,"rank")
+HR<-rms::Predict(fit, alcohol_intake, fun=exp, ref.zero=TRUE)
+head(HR)
+anova(fit)
+
+rm(bottom_row,cox_model,dd,fit,fit1,fit2,fit3,HR,plots,results,k,knot,loglik,n,nk_AIC,nk_BIC,tmp)
+```
+
+
+```{r Table1 baseline characteristics}
+#####################################################################
+# eTable 1. Baseline Characteristics by Cardiovascular Health (CVH) Level
+# According to the AHA’s recommendations and the results of Cox models with restricted cubic splines for the LE10 score related to all-cause mortality, we categorized overall CVH into low (LE10 score <60), moderate (LE10 score ≥60 but <80), and high (LE10 score ≥80) levels.
+#####################################################################
+library(boot)
+library(dplyr)
+library(knitr)
+library(table1)
+sapply(data22, function(x) sum(is.na(x)))
+
+### Baseline Characteristics by Cardiovascular Health (CVH) Level
+data_table1 <- data22 %>%
+  mutate(
+    sex = factor(sex, levels = c(1,0), labels = c("Male", "Female")),
+    ethnicity = factor(ethnicity_cat, levels = c("White", "Asian", "Black", "Mixed","Other ethnicity")),
+    # ethnicity = case_when(
+    #   ethnicity_cat == "White" ~ "White",
+    #   ethnicity_cat == "Asian" | ethnicity_cat == "Black" | ethnicity_cat == "Mixed" | ethnicity_cat == "Other ethnicity" ~ "Non-white"),
+    # ethnicity = factor(ethnicity, levels = c("Non-white", "White")),
+    #education = factor(education_cat, levels = c("No qualifications", "CSEs or O levels/GCSEs or equivalent", "A levels/AS levels or equivalent", "Other professional qualifications", "NVQ or HND or HNC or equivalent", "College or University degree")),
+    education = case_when(
+      education_cat == "College or University degree" ~ "College or above",
+      education_cat == "CSEs or O levels/GCSEs or equivalent" | education_cat == "A levels/AS levels or equivalent" | education_cat == "Other professional qualifications" | education_cat == "NVQ or HND or HNC or equivalent" ~ "High school or equivalent",
+      education_cat == "No qualifications" ~ "Less than high school",
+    ),
+    income = factor(income_cat, levels = c("<18,000", "18,000-30,999", "31,000-51,999", "52,000-100,000", ">100,000")),
+    family_history = factor(family_history, levels = c(0,1), labels = c("No", "Yes")),
+    CVH_level = case_when(
+      total_score < 60 ~ "Low CVH", # Reference
+      total_score >= 60 & total_score < 80 ~ "Moderate CVH",
+      total_score >= 80 ~ "High CVH")
+  )
+# Factor the basic variables that we're interested in
+data_table1$CVH_level <- 
+  factor(data_table1$CVH_level, 
+         levels = c("Low CVH", "Moderate CVH", "High CVH"))
+
+label(data_table1$age_first_assessment) <- "Age, mean (SD), years"
+label(data_table1$sex) <- "Sex"
+label(data_table1$TDI) <- "Townsend deprivation index, mean (SD)"
+label(data_table1$ethnicity) <- "Ethnicity, n (%)"
+label(data_table1$education) <- "Education levels, n (%)"
+label(data_table1$income) <- "Annual household income, n (%), £"
+label(data_table1$family_history) <- "Family history, n (%)"
+label(data_table1$total_score) <- "Total score"
+label(data_table1$alcohol_score) <- "Alcohol consumption score"
+label(data_table1$mental_health_score) <- "Mental health score"
+label(data_table1$physical_activity_score) <- "Physical activity score"
+label(data_table1$smoke_score) <- "Tobacco/nicotine exposure score"
+label(data_table1$HDI_score) <- "Healthy diet score"
+label(data_table1$sleep_score) <- "Sleep health score"
+label(data_table1$BMI_score) <- "Body mass index score"
+label(data_table1$BL_score) <- "Blood lipid score"
+label(data_table1$BG_score) <- "Blood glucose score"
+label(data_table1$BP_score) <- "Blood pressure score"
+
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=3), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.1f %%)", FREQ, PCT))))
+}
+
+caption  <- "Table 1. Baseline Characteristics by Cardiovascular Health (CVH) Level"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Cardiovascular health (CVH) is categorized into three levels based on LE10 scores (low: <60; moderate: ≥60 and <80; and high: ≥80). Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+
+table1(~age_first_assessment+sex+ethnicity+TDI+education+income+family_history+total_score+alcohol_score+mental_health_score+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score|CVH_level,data=data_table1,overall=c(left="Total"),caption=caption,footnote=footnote,render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+out <- table1(~age_first_assessment+sex+ethnicity+TDI+education+income+alcohol_score+mental_health_score+total_score+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score|CVH_level,data=data_table1,overall=c(left="Total"),caption=caption,footnote=footnote,render.continuous=my.render.cont, render.categorical=my.render.cat) 
+table_data <- as.data.frame(out)
+write.csv(table_data, file = , row.names = FALSE)
+
+
+### eTable 1. Characteristics between participants with and without complete LE10 metrics
+data_tmp  <- left_join(data_cov, data_out, by = c("eid"))
+data_comparison  <- left_join(data_tmp, data_exp, by = c("eid"))
+names(data_comparison)[names(data_comparison) == "age_first_assessment.x"] <- "age_first_assessment"
+data_comparison$exp_na <- ifelse(is.na(data_comparison$total_score),1,0)
+data_comparison <- data_comparison %>%
+  mutate(
+    exp_na = factor(exp_na, levels = c(1,0), labels = c("Excluded", "Included")),
+    sex = factor(sex, levels = c(1,0), labels = c("Male", "Female")),
+    ethnicity = factor(ethnicity_cat, levels = c("White", "Asian", "Black", "Mixed", "Other ethnicity")),
+    education = factor(education_cat, levels = c("No qualifications", "CSEs or O levels/GCSEs or equivalent", "A levels/AS levels or equivalent", "Other professional qualifications", "NVQ or HND or HNC or equivalent", "College or University degree")),
+    income = factor(income_cat, levels = c("<18,000", "18,000-30,999", "31,000-51,999", "52,000-100,000", ">100,000")),
+    family_history = factor(family_history, levels = c(0,1), labels = c("No", "Yes")))
+
+# label()
+label(data_comparison$age_first_assessment) <- "Age, mean (SD), years"
+label(data_comparison$sex) <- "Sex"
+label(data_comparison$TDI) <- "Townsend deprivation index, mean (SD)"
+label(data_comparison$ethnicity) <- "Ethnicity, n (%)"
+label(data_comparison$education) <- "Education levels, n (%)"
+label(data_comparison$income) <- "Annual household income, n (%), £"
+label(data_comparison$family_history) <- "Family history, n (%)"
+
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+caption  <- "eTable 1. Characteristics between participants with and without complete LE10 metrics"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+table1(~age_first_assessment+sex+ethnicity+TDI+education+income+family_history|exp_na,data=data_comparison,overall=F,caption=caption,footnote=footnote,render.continuous=my.render.cont,render.categorical=my.render.cat,extra.col=list(`P-value`=pvalue)) 
+
+
+### eTable 2. Baseline characteristics of the study participants according to the number of low-risk LE10 metrics
+data_table1 <- data_table1 %>%
+  mutate(
+    ideal_number = case_when(
+      ideal_number < 6 ~ "0-5", # Reference
+      ideal_number >= 6 & ideal_number < 9 ~ "6-8",
+      ideal_number >= 9 ~ "9-10"),
+    factor(ideal_number, levels = c("0-5", "6-8", "9-10"))
+  )
+strata <- c(split(data_table1, data_table1$ideal_number), list(Overall=data_table1))
+# label()
+label(data_table1$ideal_number) <- "Number of low-risk LE10 metrics"
+labels <- list(
+    variables=list(age_first_assessment="Age, mean (SD), years", sex="Sex", TDI="Townsend deprivation index, mean (SD)", ethnicity="Ethnicity, n (%)", education="Education levels, n (%)", income="Annual household income, n (%), £", family_history="Family history", alcohol_score="Alcohol consumption score", mental_health_score="Mental health score", physical_activity_score="Physical activity score", smoke_score="Tobacco/nicotine exposure score", HDI_score="Healthy diet score", sleep_score="Sleep health score", BMI_score="Body mass index score", BL_score="Blood lipid score", BG_score="Blood glucose score", BP_score="Blood pressure score"),
+    groups=list("Number of low-risk LE10 metrics",""))
+
+caption  <- "eTable 2. Baseline characteristics of the study participants according to the number of low-risk LE10 metrics"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+
+table1(~age_first_assessment+ethnicity+TDI+education+income+family_history+total_score+alcohol_score+mental_health_score+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score|ideal_number,data=data_table1,overall=c(right="Total"),caption=caption,footnote=footnote,render.continuous=my.render.cont, render.categorical=my.render.cat)
+table1(strata, labels, groupspan=c(3,1), caption=caption, footnote=footnote,
+       render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+
+### eTable 3. Baseline characteristics between men and women
+# Render descriptive statistics for continuous and categorical variables separately
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=3), c("",
+        "Mean (SD)"=sprintf("%s (%s)", MEAN, SD)))
+}
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%0.1f %%)", FREQ, PCT))))
+}
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+caption  <- "eTable 3. Baseline characteristics between male and female participants"
+footnote <- "Data are presented as mean (SD) for continuous variables or n (%) for categorical variables. Abbreviations: CSE, Certificate of Secondary Education; GCSE, General Certificate of Secondary Education; HNC, Higher National Certificate; NVQ, National Vocational Qualification."
+
+table1(~age_first_assessment+ethnicity+TDI+education+income+family_history+total_score+alcohol_score+mental_health_score+physical_activity_score+smoke_score+HDI_score+sleep_score+BMI_score+BL_score+BG_score+BP_score|sex,data=data_table1,overall=F,caption=caption,footnote=footnote,render.continuous=my.render.cont,render.categorical=my.render.cat,extra.col=list(`P-value`=pvalue))
+
+```
+
+
+```{r Univariate cox regression}
+library(dplyr)
+library(ezcox)
+library(knitr)
+covariates <- c("age", "sex", "ethnicity", "education", "income", "TDI", "family_history", "physical_activity_score", "smoke_score", "HDI_score", "sleep_score", "BMI_score", "BL_score", "BG_score", "BP_score", "alcohol_score", "mental_health_score")
+
+univariate_cox_analysis(data_cox, "survival_time", "death", covariates, "")
+univariate_cox_analysis(data_cox, "survival_time", "CVD_mortality", covariates, "")
+univariate_cox_analysis(data_cox, "survival_time", "cancer_mortality", covariates, "")
+univariate_cox_analysis(data_cox, "survival_time_MACE", "MACE_incidence", covariates, "")
+univariate_cox_analysis(data_cox, "survival_time_cancer", "cancer_incidence", covariates, "")
+```
+
+
+```{r Multivariate Cox regression}
+library(dplyr)
+library(survival)
+library(data.table)
+library(broom)
+library(tibble)
+
+data22$age <- data22$age_first_assessment
+data_cox <- preprocess_data(data22)
+
+cox_analysis(data_cox, "survival_time", "death", "")
+cox_analysis(data_cox, "survival_time", "cancer_mortality", "")
+cox_analysis(data_cox, "survival_time", "CVD_mortality", "")
+cox_analysis(data_cox, "survival_time_MACE", "MACE_incidence", "")
+cox_analysis(data_cox, "survival_time_cancer", "cancer_incidence", "")
+```
+
+
+```{r Cox regression analysis by subgroups}
+library(dplyr)
+library(survival)
+library(data.table)
+library(broom)
+library(tibble)
+cox_sub_analysis <- function(data, filter_col, filter_value, output_dir) {
+  filtered_data <- data[data[[filter_col]] == filter_value, ]
+  cox_analysis(filtered_data, "survival_time", "death", output_dir)
+  cox_analysis(filtered_data, "survival_time", "cancer_mortality", output_dir)
+  cox_analysis(filtered_data, "survival_time", "CVD_mortality", output_dir)
+  cox_analysis(filtered_data, "survival_time_MACE", "MACE_incidence", output_dir)
+  cox_analysis(filtered_data, "survival_time_cancer", "cancer_incidence", output_dir)
+}
+
+data22$age <- data22$age_first_assessment
+data_cox <- preprocess_data(data22)
+
+cox_sub_analysis(data_cox, "age_group", "<60 years", "")
+cox_sub_analysis(data_cox, "age_group", "≥60 years", "")
+
+cox_sub_analysis(data_cox, "sex", "Male", "")
+cox_sub_analysis(data_cox, "sex", "Female", "")
+
+cox_sub_analysis(data_cox, "TDI_sub", 0, "")
+cox_sub_analysis(data_cox, "TDI_sub", 1, "")
+
+cox_sub_analysis(data_cox, "ethnicity", "Non-white", "")
+cox_sub_analysis(data_cox, "ethnicity", "White", "")
+
+cox_sub_analysis(data_cox, "education_sub", 0, "")
+cox_sub_analysis(data_cox, "education_sub", 1, "")
+
+cox_sub_analysis(data_cox, "income_sub", 0, "")
+cox_sub_analysis(data_cox, "income_sub", 1, "")
+
+cox_sub_analysis(data_cox, "family_history", "No", "")
+cox_sub_analysis(data_cox, "family_history", "Yes", "")
+```
+
+
+```{r Competing risk model}
+library(cmprsk)
+library(riskRegression)
+library(pec)
+
+####################################
+# CVD mortality
+####################################
+data_cmprsk$status <- ifelse(data_cmprsk$CVD_mortality==1,1,ifelse(data_cmprsk$all_cause_mortality==1,2,0))
+data_cmprsk$event <- factor(data_cmprsk$status, levels=c(0,1,2), labels=c("Alive", "Death from CVD", "Death other causes"))
+
+###Application condition judgment - the sub-distribution satisfies the PH assumption
+data_1 <- data_cmprsk[data_cmprsk$status!=2,] 
+data_2 <- data_cmprsk[data_cmprsk$status!=1,] 
+data_2$status <- ifelse(data_2$status==0,0,1) 
+cox_1 <- coxph (formula = Surv(time, status) ~ age_group + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_1, id = eid)  
+cox_2 <- coxph (formula = Surv(time, status) ~ age_group + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_2, id = eid)  
+ph_1 <- cox.zph(cox_1)  
+ph_2 <- cox.zph(cox_2)  
+ph_1 
+ph_2 
+ggcoxzph(ph_1)  
+ggcoxzph(ph_2)  
+
+###Application condition judgment - multicollinearity
+library ('car')  
+data_lm <- data_cmprsk  
+data_lm$Group <- 1:length(data_lm[,1])  
+lm_model <- lm (formula = status ~ age + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_lm)  
+vif(lm_model)  #calculte vif
+
+#CVH_level
+#1.glm() for feature table
+tab <- glm(event~age_group+sex+TDI+ethnicity+education+income+family_history+CVH_level,data=data_cmprsk,family="binomial")
+#2.crrFormula for Multivariate regression
+mul3 <- crrFormula(time+status~age_group+sex+TDI+ethnicity+education+income+family_history+CVH_level,data=data_cmprsk)
+autoReg(tab,uni=F,mul=F)%>%
+  addFitSummary(mul3,"HR (competing risks multivariable)") %>% 
+  myft()
+
+#ideal_number
+#1.glm()for feature table
+tab <- glm(event~age_group+sex+TDI+ethnicity+education+income+family_history+ideal_number,data=data_cmprsk,family="binomial")
+#2.crrFormula for Multivariate regression
+mul3 <- crrFormula(time+status~age_group+sex+TDI+ethnicity+education+income+family_history+ideal_number,data=data_cmprsk)
+autoReg(tab,uni=F,mul=F)%>%
+  addFitSummary(mul3,"HR (competing risks multivariable)") %>% 
+  myft()
+
+####################################
+# Cancer mortality
+####################################
+data_cmprsk$status <- ifelse(data_cmprsk$cancer_mortality==1,1,ifelse(data_cmprsk$all_cause_mortality==1,2,0))
+data_cmprsk$event <- factor(data_cmprsk$status, levels=c(0,1,2), labels=c("Alive", "Death from cancer", "Death other causes"))
+
+###Application condition judgment - the sub-distribution satisfies the PH assumption
+data_1 <- data_cmprsk[data_cmprsk$status!=2,]
+data_2 <- data_cmprsk[data_cmprsk$status!=1,]
+data_2$status <- ifelse(data_2$status==0,0,1)
+cox_1 <- coxph (formula = Surv(time, status) ~ age_group + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_1, id = eid)  
+cox_2 <- coxph (formula = Surv(time, status) ~ age_group + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_2, id = eid)  
+ph_1 <- cox.zph(cox_1)  
+ph_2 <- cox.zph(cox_2)  
+ph_1 
+ph_2 
+ggcoxzph(ph_1) 
+ggcoxzph(ph_2) 
+
+###Application condition judgment - multicollinearity
+library ('car')  
+data_lm <- data_cmprsk  
+data_lm$Group <- 1:length(data_lm[,1]) 
+lm_model <- lm (formula = status ~ age + sex + TDI + ethnicity + education + income + family_history + physical_activity_score + alcohol_score + smoke_score + HDI_score + sleep_score + BMI_score + BL_score + BG_score + BP_score + mental_health_score, data = data_lm)  
+vif(lm_model)  # calculate vif
+
+#CVH_level
+#1.glm() for feature table
+tab <- glm(event~age_group+sex+TDI+ethnicity+education+income+family_history+CVH_level,data=data_cmprsk,family="binomial")
+#2.crrFormula for Multivariate regression
+mul3 <- crrFormula(time+status~age_group+sex+TDI+ethnicity+education+income+family_history+CVH_level,data=data_cmprsk)
+autoReg(tab,uni=F,mul=F)%>%
+  addFitSummary(mul3,"HR (competing risks multivariable)") %>% 
+  myft()
+
+#ideal_number
+#1.glm() for feature table
+tab <- glm(event~age_group+sex+TDI+ethnicity+education+income+family_history+ideal_number,data=data_cmprsk,family="binomial")
+#2.crrFormula for Multivariate regression
+mul3 <- crrFormula(time+status~age_group+sex+TDI+ethnicity+education+income+family_history+ideal_number,data=data_cmprsk)
+autoReg(tab,uni=F,mul=F)%>%
+  addFitSummary(mul3,"HR (competing risks multivariable)") %>% 
+  myft()
+```
+
+
+```{r panel data}
+#########################################################################################
+# REF: https://rdrr.io/cran/elect/man/electData.html#heading-5
+#########################################################################################
+len2 <- length(data22$eid)
+data_f1           <- data.frame(matrix(nrow = len2, ncol = 0))
+data_f1$eid       <- data22$eid
+data_f1$state     <- 1
+data_f1$age       <- data22$age_first_assessment
+data_f1$bsline    <- 1
+
+data_f2           <- data.frame(matrix(nrow = len2, ncol = 0))
+data_f2$eid       <- data22$eid
+data_f2$state     <- 2
+data_f2$age       <- pmin(data22$MACE_incidence_age, data22$cancer_incidence_age, na.rm=TRUE)
+data_f2$age       <- ifelse(is.na(data_f2$age),0,data_f2$age)
+data_f2$bsline    <- 0
+data_f2 <- data_f2[data_f2$age>0,]
+
+data_f3           <- data.frame(matrix(nrow = len2, ncol = 0))
+data_f3$eid       <- data22$eid
+data_f3$state     <- 3
+data_f3$age       <- data22$age_at_death
+data_f3$age       <- ifelse(is.na(data_f3$age),0,data_f3$age)
+data_f3$bsline   <- 0
+data_f3 <- data_f3[data_f3$age>0,]
+
+data_f            <- data.frame()
+data_f <- rbind(data_f1, data_f2, data_f3)
+
+data_f4           <- tally(group_by(data_f, eid))
+data_f4           <- data_f4[data_f4$n==1,]
+data_f4$state     <- 1 #censoring
+data_f4           <- inner_join(data_f4,data22[,c("eid","age_censoring")],by = c("eid"))
+data_f4$bsline    <- 0
+names(data_f4)[names(data_f4) == "age_censoring"] <- "age"
+data_f4           <- data_f4[,c("eid","state","age","bsline")]
+
+
+data_f <- rbind(data_f1, data_f2, data_f3, data_f4)
+
+```
+
+
+```{r Life expectancies according to CVH levels}
+# TO covert CVH level into dummy variables
+data22$CVH_level1 <- ifelse(data22$total_score >= 60 & data22$total_score < 80, 1, 0)
+data22$CVH_level2 <- ifelse(data22$total_score >= 80, 1, 0)
+
+data_msm <- left_join(data_f, data22, by = c("eid"))
+data_msm <- data_msm[order(data_msm$eid, data_msm$age, data_msm$bsline),]
+cat("Sample size:"); print(length(table(data_msm$eid)))
+cat("Frequencies observed state:"); print(table(data_msm$state))
+cat("State table:"); print(statetable.msm(state,eid,data=data_msm))
+
+q <- 0.05; Q <- rbind(c(0,q,q), c(0,0,q),c(0,0,0))
+model_CVH_level <- msm(state~age, subject=eid, data=data_msm, center=FALSE, qmatrix=Q, deathexact=TRUE, method="BFGS", control=list(reltol=1e-16), 
+covariates = ~ age+sex+CVH_level1+CVH_level2)
+model_CVH_level
+
+num_state3 <- sum(data_msm$state == 3)
+num_state2 <- sum(data_msm$state == 2)
+a <- as.data.frame(table(data_msm$eid))
+num_state23 <- sum(a$Freq == 3)
+num_state22 <- num_state2 - num_state23
+num_state1 <- length(data22$eid)
+num_state12 <- num_state2
+num_state13 <- num_state3
+
+### To calculate LEs for each specified CVH level
+sddata <- data_msm[data_msm$state%in%c(1,2),]
+ages <- c(50, 60, 70)  
+sexs <- c(0, 1)
+dummy_levels <- c(0, 1)  
+probs <- c(.025, .5, .975)  
+L_age <- length(ages)  
+L_sex <- length(sexs)  
+L_dummy <- length(dummy_levels)  
+print(length(LEs$pnt))
+s_num <- 2000
+# Initialize a vector to store the estimated LEs  
+LEs_CVH_level <- array(NA, c(L_age, L_sex, L_dummy, L_dummy, length(LEs$pnt), 6))
+# Estimate LEs for each specified age, sex, and CVH level, and store the results
+for (a in seq_along(ages)) {  
+  for (s in seq_along(sexs)) {  
+    for (h in 1:L_dummy) {  
+      for (i in 1:L_dummy) {  
+        age <- ages[a]  
+        sex <- sexs[s]  
+        CVH_level1 <- dummy_levels[h]  
+        CVH_level2 <- dummy_levels[i]  
+        cat(sprintf("Calculating LEs for age = %d, sex = %d, CVH level1 = %d, CVH level2 = %d\n", age, sex, CVH_level1, CVH_level2))
+        results <- elect(model_CVH_level, b.covariates = list(age = age, sex = sex, CVH_level1 = CVH_level1, CVH_level2 = CVH_level2),  
+                         statedistdata = sddata, h = 0.1, setseed = 1234, age.max = 110, S = s_num)
+        for(f in 1:s_num){
+          results$sim[f,6] <- (results$sim[f,4]*num_state22 + results$sim[f,6]*num_state23)/num_state2
+          results$sim[f,7] <- results$sim[f,5] + results$sim[f,6]
+        }
+        results$pnt[6] <- (results$pnt[4]*num_state22 + results$pnt[6]*num_state23)/num_state2
+        results$pnt[7] <- results$pnt[5] + results$pnt[6]
+        summary.elect(results, probs = probs, digits = 3, print = TRUE)
+        for (j in 1:7) {  
+          for (k in 1:length(probs)) {  
+            LEs_CVH_level[a, s, h, i, j, k] <- quantile(results$sim[, j], probs = probs[k])  
+          }  
+num_state11 <- num_state1 - num_state2 - num_state3
+          LEs_CVH_level[a, s, h, i, j, 4] <- results$pnt[j]
+          LEs_CVH_level[a, s, h, i, j, 5] <- mean(results$sim[, j])
+          LEs_CVH_level[a, s, h, i, j, 6] <- sd(results$sim[, j])
+        }  
+      }  
+    }  
+  }  
+}
+
+```
+
+
+```{r Model comparison}
+#install.packages("BiocManager")
+#BiocManager::install("survcomp")
+library(survcomp)
+library(survival)
+library(rms) 
+library(pec)
+
+# LE8
+model_LE8 <- coxph(Surv(time,status)~
+                     rcs(age,4)+total_score_LE8,
+                   data=data_cox,
+                   x=TRUE, y=TRUE
+                   )
+Cindex_LE8 <- summary(model_LE8)$concordance
+Cindex_LE8
+# LE8+mental health score
+model_LC9 <- coxph(Surv(time,status)~
+                     rcs(age,4)+total_score_LE8
+                   +PHQ2_score,
+                   data=data_cox,
+                   x=TRUE, y=TRUE
+                   )
+Cindex_LC9 <- summary(model_LC9)$concordance
+Cindex_LC9
+# LE8+alcohol consumption score
+model_LE9 <- coxph(Surv(time,status)~
+                     rcs(age,4)
+                   +total_score_LE8
+                   +rcs(alcohol_intake,4),
+                   data=data_cox,
+                   x=TRUE, y=TRUE
+                   )
+Cindex_LE9 <- summary(model_LE9)$concordance
+Cindex_LE9
+# LE10
+model_LE10 <- coxph(Surv(time,status)~
+                      rcs(age,4)+total_score_LE8
+                    +rcs(alcohol_intake,4)
+                    +PHQ2_score,
+                    data=data_cox,
+                    x=TRUE, y=TRUE
+                    )
+Cindex_LE10 <- summary(model_LE10)$concordance
+Cindex_LE10
+
+#####################################################################
+# Calculate C-indexes with survcomp package
+#####################################################################
+# LE8
+Cindex_LE8 <- concordance.index(x=predict(model_LE8),
+                                surv.time=data_cox$time,
+                                surv.event=data_cox$status,
+                                method="noether")
+Cindex_LE8
+
+# LE8+mental health score
+Cindex_LC9 <- concordance.index(x=predict(model_LC9),
+                                surv.time=data_cox$time,
+                                surv.event=data_cox$status,
+                                method="noether")
+Cindex_LC9
+
+# LE8+alcohol consumption score
+Cindex_LE9 <- concordance.index(x=predict(model_LE9),
+                                surv.time=data_cox$time,
+                                surv.event=data_cox$status,
+                                method="noether")
+Cindex_LE9
+
+# LE10
+Cindex_LE10 <- concordance.index(x=predict(model_LE10),
+                                 surv.time=data_cox$time,
+                                 surv.event=data_cox$status,
+                                 method="noether")
+Cindex_LE10
+
+cindex.comp1 <- cindex.comp(Cindex_LC9, Cindex_LE8)
+cindex.comp2 <- cindex.comp(Cindex_LE9, Cindex_LE8)
+cindex.comp3 <- cindex.comp(Cindex_LE10, Cindex_LE8)
+
+p.value_decimal1 <- format(cindex.comp1$p.value, scientific = FALSE)
+p.value_decimal2 <- format(cindex.comp2$p.value, scientific = FALSE)
+p.value_decimal3 <- format(cindex.comp3$p.value, scientific = FALSE)
+
+#####################################################################
+# Calculate time-dependent AUC
+#####################################################################
+pred_LE8 <- predict(model_LE8, type = "lp")
+pred_LC9 <- predict(model_LC9, type = "lp")
+pred_LE9 <- predict(model_LE9, type = "lp")
+pred_LE10 <- predict(model_LE10, type = "lp")
+
+time_points <- seq(0, 15.6, by = 0.1)
+time_roc_LE8 <- timeROC(T = data_cox$time, delta = data_cox$status, marker = pred_LE8, cause = 1, times = time_points)
+time_roc_LC9 <- timeROC(T = data_cox$time, delta = data_cox$status, marker = pred_LC9, cause = 1, times = time_points)
+time_roc_LE9 <- timeROC(T = data_cox$time, delta = data_cox$status, marker = pred_LE9, cause = 1, times = time_points)
+time_roc_LE10 <- timeROC(T = data_cox$time, delta = data_cox$status, marker = pred_LE10, cause = 1, times = time_points)
+
+# Extract AUC values
+auc1 <- time_roc_LE8$AUC
+auc2 <- time_roc_LC9$AUC
+auc3 <- time_roc_LE9$AUC
+auc4 <- time_roc_LE10$AUC
+
+df_auc <- data.frame(
+  Time = rep(time_points, 4),  
+  AUC = c(auc1, auc2, auc3, auc4),  
+  Model = c(rep("LE8", length(time_points)), rep("LC9", length(time_points)), rep("LE9", length(time_points)), rep("LE10", length(time_points)))
+)
+print(df_auc)
+```
+
